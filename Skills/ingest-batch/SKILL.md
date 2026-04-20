@@ -26,7 +26,8 @@ Cette skill ingère **plusieurs transcripts liés à un même sujet** via un fic
 
 **Skills appelées (par les subagents) :**
 - `gather-context` — état actuel du vault sur le sujet (une fois, en amont)
-- `write-video` — fiche vidéo (appelée par chaque subagent vidéo)
+- `write-video` — fiche vidéo standard (cas par défaut)
+- `write-book` — fiche Livre à la place de la fiche vidéo pour les chroniques d'ouvrage
 - `write-entity` — individus et organisations (appelée par chaque subagent vidéo)
 - `write-concept` — concepts analytiques (appelée par chaque subagent vidéo)
 - `write-enjeu` — enjeux stratégiques (appelée par le subagent final de consolidation)
@@ -85,11 +86,13 @@ Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent 
 
 **Mission à spécifier dans le prompt du subagent :**
 - Lire en entier **un seul transcript** (celui de la vidéo assignée) — le transcript doit rester intégralement dans son contexte pendant toute la rédaction
-- Produire la fiche vidéo via la skill `write-video`
-- Créer ou enrichir les fiches Individus/Organisations mentionnés en appelant `write-entity` par entité
+- **Choisir le type de fiche-pivot** selon le contenu :
+  - Cas standard → `write-video` (fiche dans `Videos/`)
+  - Chronique d'ouvrage (format « J'ai lu » ou similaire) → `write-book` (fiche dans `Livres/`, remplace la fiche Vidéo). Critère : la vidéo est majoritairement consacrée à la restitution et à l'appréciation d'un ouvrage unique.
+- Créer ou enrichir les fiches Individus/Organisations mentionnés en appelant `write-entity` par entité. Pour une chronique livre, toujours créer/enrichir la fiche Individu de l'auteur du livre.
 - Créer ou enrichir les fiches Concepts mobilisés en appelant `write-concept` par concept
 - **Ne jamais toucher aux fiches Enjeux** (dossier `Enjeux/`) — ce sera le rôle du subagent final
-- Ne pas committer, ne pas pusher, **ne pas créer de branche git**, ne pas modifier l'Inventaire ni le fichier de suivi — se limiter aux fichiers dans `Videos/`, `Individus/`, `Organisations/`, `Concepts/`
+- Ne pas committer, ne pas pusher, **ne pas créer de branche git**, ne pas modifier l'Inventaire ni le fichier de suivi — se limiter aux fichiers dans `Videos/`, `Livres/`, `Individus/`, `Organisations/`, `Concepts/`
 
 **Contenu du briefing à transmettre au subagent :**
 - Chemin du transcript à lire (unique)

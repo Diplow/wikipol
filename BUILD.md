@@ -44,7 +44,8 @@ Elle ne fait **pas** de recherche extensive. Elle prend le contexte pour acquis 
 |-------|------|
 | `gather-context` | Rassembler tout ce que le vault sait sur un sujet donné |
 | `ingest-video` | Orchestrer l'ingestion d'un transcript |
-| `write-video` | Rédiger/enrichir une fiche `Videos/` |
+| `write-video` | Rédiger/enrichir une fiche `Videos/` (cas standard) |
+| `write-book` | Rédiger/enrichir une fiche `Livres/` (format « chronique d'ouvrage », remplace `write-video`) |
 | `write-entity` | Rédiger/enrichir une fiche `Individus/` ou `Organisations/` |
 | `write-concept` | Rédiger/enrichir une fiche `Concepts/` |
 | `write-enjeu` | Rédiger/enrichir une fiche `Enjeux/` |
@@ -80,13 +81,14 @@ Le ton et les principes d'attribution spécifiques à une source sont définis d
 ### YAML frontmatter
 
 Toujours inclure au minimum :
-- `type` : vidéo / individu / organisation / concept / enjeu
+- `type` : vidéo / livre / individu / organisation / concept / enjeu
 - `domaine` : 1-2 valeurs parmi celles définies dans le `BUILD.md` de la source
 - `thèmes` : liste de thèmes du vocabulaire contrôlé local
 - `skill_version` : identifiant de la skill + date (ex: `write-video-2026-04-20`)
 
 Selon le type :
 - **Vidéos** : + `enjeux`, `date`, `youtube_id`
+- **Livres** : + `enjeux`, `date_video`, `youtube_id`, `livre_auteur`, `livre_titre`, `livre_annee`, `livre_editeur` (optionnel)
 - **Individus** : + `aliases`
 - **Organisations** : + `aliases`
 - **Concepts** : + `aliases`
@@ -199,7 +201,8 @@ Sources/<NomSource>/
 ├── Sources/
 │   ├── Inventaire.md             ← table des vidéos (Dataview)
 │   └── Transcripts/              ← transcripts bruts (.md)
-├── Videos/                       ← 1 fiche par vidéo ingérée
+├── Videos/                       ← 1 fiche par vidéo ingérée (cas standard)
+├── Livres/                       ← 1 fiche par livre chroniqué (remplace Videos/ pour ce format)
 ├── Individus/                    ← 1 fiche par personne
 ├── Organisations/                ← 1 fiche par parti/asso/média
 ├── Concepts/                     ← 1 fiche par concept analytique

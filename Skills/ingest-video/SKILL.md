@@ -24,7 +24,8 @@ Cette skill orchestre l'ingestion d'un transcript de vidéo dans le vault d'une 
 
 **Skills appelées :**
 - `gather-context` — rassemble le contexte vault sur les sujets de la vidéo
-- `write-video` — rédige la fiche vidéo
+- `write-video` — rédige la fiche vidéo (cas standard)
+- `write-book` — rédige une fiche Livres/ à la place de la fiche vidéo, pour les chroniques d'ouvrage
 - `write-entity` — rédige/enrichit les fiches individus et organisations
 - `write-concept` — rédige/enrichit les fiches concepts
 - `write-enjeu` — rédige/enrichit les fiches enjeux
@@ -61,7 +62,7 @@ Si l'utilisateur ne fournit ni URL, ni titre, ni transcript :
 
 Lire le transcript en entier.
 
-### Étape 4 — Analyser le contenu
+### Étape 4 — Analyser le contenu et choisir le type de fiche-pivot
 
 Identifier à partir du transcript :
 
@@ -71,6 +72,18 @@ Identifier à partir du transcript :
 4. **Concepts analytiques** utilisés
 5. **Enjeux stratégiques** avancés par cette vidéo
 6. **Thèses principales** : résumé, projections, mécanismes cause-conséquence
+
+**Choix du type de fiche-pivot** :
+
+- **Fiche Vidéo (cas standard)** — par défaut pour toute vidéo d'analyse, de commentaire, d'actualité.
+- **Fiche Livre** — quand le transcript est majoritairement consacré à la restitution et à l'appréciation d'un ouvrage unique (format « J'ai lu X de Y », chronique de livre, notes de lecture).
+
+Heuristiques de détection *fiche Livre* :
+- Titre de la vidéo contient des mots-clés comme « J'ai lu », « Lecture », « Notes de lecture », « Chronique de », « Le livre de », « À propos du livre »
+- Transcript présente un ouvrage identifié (auteur + titre) et en discute principalement
+- La source donne une appréciation explicite du livre
+
+En cas de doute, privilégier la fiche Vidéo. Si plus tard la fiche gagnerait à être indexée par l'ouvrage, elle peut être convertie (renommage + adaptation du frontmatter).
 
 ### Étape 5 — Gather context
 
@@ -90,8 +103,10 @@ Pour chaque entité identifiée à l'étape 4, déterminer si la fiche existe ou
 
 Appeler les skills spécialisées dans cet ordre :
 
-1. **`write-video`** — Créer la fiche vidéo. Entrée : transcript analysé + contexte.
-2. **`write-entity`** — Pour chaque individu et organisation mentionné significativement.
+1. **Fiche-pivot** — Créer la fiche pivot selon le type choisi à l'étape 4 :
+   - Cas standard → **`write-video`** (fiche `Videos/`)
+   - Chronique d'ouvrage → **`write-book`** (fiche `Livres/` — l'embed YouTube et le lien transcript vivent ici, pas de fiche Videos/ pour cette vidéo)
+2. **`write-entity`** — Pour chaque individu et organisation mentionné significativement. Pour une chronique livre, **toujours** créer/enrichir la fiche Individu de l'auteur du livre.
 3. **`write-concept`** — Pour chaque concept analytique identifié.
 4. **`write-enjeu`** — Pour chaque enjeu stratégique avancé par la vidéo. **Note** : write-enjeu bénéficie particulièrement du contexte multi-vidéos.
 

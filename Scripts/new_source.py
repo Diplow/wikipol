@@ -98,6 +98,7 @@ def create_source(name: str, slug: str, channel_url: str, handle: str,
     # 1. Dossiers
     subdirs = [
         "Videos",
+        "Livres",
         "Individus",
         "Organisations",
         "Concepts",
