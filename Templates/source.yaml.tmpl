@@ -1,0 +1,24 @@
+# Configuration de la source — paramètre unique d'entrée
+# pour les scripts (Scripts/*.py) et les skills (Skills/*).
+
+source:
+  name: "{{SOURCE_NAME}}"                # nom affiché (commits, logs, docs)
+  slug: "{{SOURCE_SLUG}}"                # préfixe branches git, nom court
+  type: "youtube"                        # unique type supporté pour l'instant
+  attribution: "{{SOURCE_ATTRIBUTION}}"  # phrase utilisée dans les fiches (ex: "la PaduTeam")
+
+youtube:
+  channel_url: "{{CHANNEL_URL}}"
+  channel_handle: "{{CHANNEL_HANDLE}}"
+
+files:
+  inventaire: "Sources/Inventaire.md"
+  chronologique: "{{SLUG_UPPER}}_CHRONOLOGIQUE.md"
+
+git:
+  repo: "{{GIT_REPO}}"                   # ex: "username/reponame" (GitHub)
+  default_branch: "develop"
+  ingest_branch_prefix: "ingest-batch/"
+
+claude:
+  default_model: "sonnet"                # "sonnet" ou "opus"
