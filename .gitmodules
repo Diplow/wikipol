@@ -1,3 +1,4 @@
 [submodule "Sources/Paduteam"]
 	path = Sources/Paduteam
 	url = https://github.com/Diplow/paduteam-wiki.git
+	branch = develop
