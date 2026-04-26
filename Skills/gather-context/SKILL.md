@@ -52,19 +52,23 @@ Chercher dans le vault les fiches dont le sujet est le thème principal :
 
 1. **Fiche exacte** : si le sujet correspond à un fichier existant dans `Enjeux/`, `Concepts/`, `Individus/`, `Organisations/`, la lire en entier
 2. **Fiches vidéo** : chercher dans `Videos/` les fiches qui mentionnent le sujet (grep dans le contenu ou dans les tags thèmes/enjeux du frontmatter)
-3. **Enjeux liés** : les Enjeux sont les meilleurs relais de contexte — ils agrègent des liens thématiques par nature. Chercher dans `Enjeux/` les fiches qui touchent au sujet (par wikilinks ou par thème). Les lire en priorité.
-4. **Fiches entités liées (profondeur 1)** : à partir des wikilinks trouvés dans les fiches ci-dessus, identifier les individus, organisations et concepts les plus pertinents (ceux qui reviennent dans 2+ fiches liées au sujet). Les lire.
-5. **Fiches connexes (profondeur 2)** : dans les fiches lues à l'étape 4, relever les wikilinks vers des enjeux ou concepts qui semblent pertinents pour le sujet. Les lire à leur tour. Privilégier les fiches structurantes (enjeux, concepts) plutôt que les fiches terminales (individus, organisations) pour la profondeur 2.
+3. **MOC et Enjeux liés** : ces deux types de fiches sont les meilleurs relais de contexte — elles agrègent des liens thématiques par nature. Chercher dans `MOC/` (si la source utilise des Maps of Content) et `Enjeux/` les fiches qui touchent au sujet (par wikilinks ou par thème). Les lire en priorité.
+4. **Fiches entités liées (profondeur 1)** : à partir des wikilinks trouvés dans les fiches ci-dessus (y compris MOC et enjeux), identifier les individus, organisations et concepts les plus pertinents (ceux qui reviennent dans 2+ fiches liées au sujet). Les lire.
+5. **Fiches connexes (profondeur 2)** : dans les fiches lues à l'étape 4, relever les wikilinks vers des MOC, enjeux ou concepts qui semblent pertinents pour le sujet. Les lire à leur tour. Privilégier les fiches structurantes (MOC, enjeux, concepts) plutôt que les fiches terminales (individus, organisations) pour la profondeur 2 — elles produisent des connexions plus riches.
 
 **Critère d'arrêt** : ne pas aller au-delà de la profondeur 2. Si une fiche de profondeur 2 ouvre un sujet très différent du sujet initial, ne pas la suivre.
 
 ### Étape 1b — Exploration par grep des fiches
 
-La recherche par fiches et wikilinks ne trouve que ce qui est déjà explicitement lié. Pour découvrir des connexions non formalisées :
+La recherche par fiches et wikilinks ne trouve que ce qui est déjà explicitement lié. Pour découvrir des connexions que le vault n'a pas encore formalisées :
 
-1. **Mots-clés du sujet** : générer 5-10 mots-clés et synonymes liés au sujet
+1. **Mots-clés du sujet** : générer 5-10 mots-clés et synonymes liés au sujet (incluant noms propres, expressions canoniques de la source, surnoms ou périphrases récurrentes).
 2. **Grep dans les fiches** uniquement — `Individus/`, `Organisations/`, `Concepts/`, `Enjeux/`, `Videos/`. **Ne pas grep les transcripts** : ils ne sont pas lus à cette étape, et leur rôle (source brute) ne les qualifie pas pour construire la carte de contexte.
 3. **Évaluer les pistes** : parmi les résultats grep, identifier les fiches qui n'étaient pas déjà trouvées à l'étape 1. Les lire si elles semblent apporter du contexte nouveau.
+
+Cette étape est particulièrement utile pour :
+- Les sujets transversaux qui touchent beaucoup de fiches sans y être centraux
+- Les connexions non formalisées (un concept utilisé dans une vidéo mais pas encore lié à l'enjeu)
 
 ### Étape 2 — Construire la carte de contexte
 
@@ -128,4 +132,4 @@ Résumer en quelques lignes :
 - **Ne pas modifier le vault.** Cette skill est en lecture seule — elle ne crée ni ne modifie aucune fiche.
 - **Ne pas lire les transcripts.** Les transcripts sont la source brute des fiches vidéo. Leur rôle est en amont (ingestion). Pour le contexte, gather-context se concentre sur les fiches déjà produites.
 - **Carte de navigation, pas dump de contenu.** `.context-tmp.md` ne doit pas dépasser ~3K tokens. Si la carte dépasse, resserrer : privilégier les liens + annotations courtes, couper les présentations trop longues. Le détail vit dans les fiches liées — les skills `write-*` iront les ouvrir.
-- **Annotations informatives.** L'annotation d'un lien répond à « pourquoi cette fiche pour ce sujet ? ». Pas de tautologie, pas de résumé — une indication de rapport.
+- **Annotations informatives.** L'annotation d'un lien répond à « pourquoi cette fiche pour ce sujet ? ». Pas de tautologie (« Fiche concept X → parle de X »), pas de résumé — une indication de rapport.

@@ -18,15 +18,15 @@ La valeur principale de cette skill est dans l'**enrichissement** : chaque nouve
 
 ## Prérequis
 
-- `Sources/.context-tmp.md` existe et a été produit par un appel **récent** à `gather-context` sur le sujet (l'entité ou le thème parent). Si ce fichier n'existe pas, ne concerne pas ce sujet, ou paraît périmé, **interrompre** et demander à l'appelant de lancer `gather-context` d'abord.
-- Ce que le transcript courant dit de l'entité a été identifié par l'analyse
+- `Sources/.context-tmp.md` existe et a été produit par un appel **récent** à `gather-context` sur le sujet (l'entité ou le thème parent). Si ce fichier n'existe pas, ne concerne pas ce sujet, ou paraît périmé, **interrompre** et demander à l'appelant de lancer `gather-context` d'abord. Ne pas tenter de l'exécuter soi-même.
+- Ce que le transcript courant dit de l'entité a été identifié par l'analyse (étape 2 de ingest-video)
 
 **Conventions partagées** : voir `BUILD.md` de WikiPol.
 **Ton et attribution** : voir `CLAUDE.md` de la source.
 
 ## Navigation de la carte de contexte
 
-`.context-tmp.md` est une **carte** : présentation synthétique + liens annotés vers les fiches pertinentes. Elle ne contient pas les détails. Pour rédiger ou enrichir une fiche Individu/Organisation, **ouvrir les fiches Vidéos où l'entité apparaît** pour consolider la trajectoire et les relations, et **ouvrir les fiches Enjeux associées** pour positionner l'entité comme adversaire/allié dans chaque combat. Ouvrir aussi la fiche de l'entité elle-même si elle existe.
+`.context-tmp.md` est une **carte** : présentation synthétique + liens annotés vers les fiches pertinentes. Elle ne contient pas les détails. Pour rédiger ou enrichir une fiche Individu/Organisation, **ouvrir les fiches Vidéos où l'entité apparaît** pour consolider la trajectoire et les relations, et **ouvrir les fiches Enjeux associées** pour positionner l'entité comme adversaire/allié dans chaque combat. Ouvrir aussi la fiche de l'entité elle-même si elle existe — la carte la liste mais n'en recopie pas le contenu.
 
 ---
 

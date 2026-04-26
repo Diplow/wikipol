@@ -49,6 +49,8 @@ La skill prend **le premier batch non réalisé** dans l'ordre du fichier, **sau
 
 Si l'utilisateur fournit autre chose (un sujet, une liste de vidéos, un bloc temporel) sans fichier de suivi, **demander qu'un fichier de suivi soit créé ou désigné d'abord** — cette skill ne travaille qu'à partir d'un fichier de suivi existant. Pour une vidéo isolée, orienter vers `ingest-video`.
 
+**Note worktree** : cette skill n'a **pas besoin** d'être lancée dans un worktree git. Elle travaille directement dans le répertoire principal sur une branche dédiée. Ne pas créer de worktree pour l'exécuter.
+
 ---
 
 ## Workflow
@@ -58,14 +60,16 @@ Si l'utilisateur fournit autre chose (un sujet, une liste de vidéos, un bloc te
 1. Lire le fichier de suivi en entier.
 2. Identifier les sous-batches et leur statut. Chaque batch a typiquement un titre (`## Batch A — ...`), un **Statut**, un **Slug branche**, et une liste de vidéos (`- [ ]` / `- [x]`).
 3. **Si l'utilisateur a désigné un batch explicitement**, prendre celui-là.
-4. **Sinon**, prendre le **premier batch non réalisé** dans l'ordre du fichier.
+4. **Sinon**, prendre le **premier batch non réalisé** dans l'ordre du fichier (ou dans l'ordre recommandé si une section « Notes et décisions » en définit un).
 5. Résoudre chaque vidéo cochable (`- [ ]`) du batch au transcript correspondant dans `Sources/Transcripts/` par correspondance fuzzy sur le basename (normalisation : minuscules, suppression des accents, ponctuation → espaces, compactage des espaces). Si aucune correspondance n'est trouvée pour une vidéo, signaler à l'utilisateur avant de continuer.
 6. Retenir le **thème parent** (ex. le nom du fichier de suivi) — il sert à nommer la branche.
 7. **Présenter la liste** à l'utilisateur pour validation avant de continuer — **sauf si le prompt contient "mode automatique"**, auquel cas procéder directement sans attendre de confirmation.
 
 ### Étape 2 — État du vault (gather-context)
 
-Appeler `gather-context` avec le sujet du batch (dérivé du titre du sous-batch + thème parent). Cela produit `Sources/.context-tmp.md` — une **carte de navigation** passée telle quelle à chaque subagent.
+Appeler `gather-context` avec le sujet du batch (dérivé du titre du sous-batch + thème parent). Cela produit `Sources/.context-tmp.md` — une **carte de navigation** : une présentation synthétique du sujet + une liste annotée de fiches liées (Enjeux, Concepts, Individus, Organisations, Vidéos déjà ingérées).
+
+Ce fichier est **passé tel quel** à chaque subagent vidéo et au subagent final de consolidation. Les subagents sont responsables d'ouvrir les fiches wikilinkées dont ils ont besoin — la carte liste, elle ne recopie pas le contenu. C'est explicité dans les briefings ci-dessous.
 
 ### Étape 3 — Branche git
 
@@ -76,13 +80,17 @@ Appeler `gather-context` avec le sujet du batch (dérivé du titre du sous-batch
 
 ### Étape 4 — Résoudre l'ordre de lancement
 
-Les subagents vidéo sont lancés **séquentiellement dans l'ordre des vidéos tel qu'il apparaît dans le fichier de suivi**. Par convention, les fichiers de suivi listent les vidéos d'un sous-batch en ordre chronologique (ancien → récent).
+Les subagents vidéo sont lancés **séquentiellement dans l'ordre des vidéos tel qu'il apparaît dans le fichier de suivi**. Par convention, les fichiers de suivi listent les vidéos d'un sous-batch en ordre chronologique (ancien → récent) — c'est cette convention qui fixe l'ordre, pas une source externe.
 
-La séquentialité permet que chaque subagent voie les enrichissements produits par les précédents (et puisse wikilinker vers des fiches déjà existantes plutôt que créer des doublons).
+La séquentialité permet :
+- que les fiches Concepts/Individus/Organisations reflètent l'évolution temporelle
+- que chaque subagent voie les enrichissements produits par les précédents (et puisse wikilinker vers des fiches déjà existantes plutôt que créer des doublons)
+
+Si une vidéo du batch n'a pas de date connue à ce stade (cas rare, ex: transcript sans métadonnée), le subagent de cette vidéo lira la date dans son transcript et l'inscrira dans la fiche vidéo qu'il produit — ce n'est pas un blocage pour l'ordre de lancement.
 
 ### Étape 5 — Un subagent par vidéo (séquentiel, ordre chronologique)
 
-Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent via l'outil `Agent`. Attendre la fin de chaque subagent avant de lancer le suivant — ne **jamais** lancer ces subagents en parallèle (conflits sur les fiches partagées Concepts/Individus/Organisations).
+Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent via l'outil `Agent` (subagent_type: `general-purpose`). Attendre la fin de chaque subagent avant de lancer le suivant — ne **jamais** lancer ces subagents en parallèle (conflits sur les fiches partagées Concepts/Individus/Organisations).
 
 **Mission à spécifier dans le prompt du subagent :**
 - Lire en entier **un seul transcript** (celui de la vidéo assignée) — le transcript doit rester intégralement dans son contexte pendant toute la rédaction
@@ -107,11 +115,11 @@ Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent 
   - Si la vidéo articule un mécanisme, le restituer avec ses étapes — pas juste le nommer
 - **Interdit absolu de référencer le « batch »** dans les fiches produites
 
-Si un subagent échoue ou produit un résultat manifestement incomplet, analyser la cause et le relancer — ne pas passer à la vidéo suivante avec un état incohérent.
+Si un subagent échoue ou produit un résultat manifestement incomplet, analyser la cause et le relancer — ne pas passer à la vidéo suivante avec un état incohérent. Entre deux lancements, rappeler à l'orchestrateur (soi-même) qu'il ne doit **pas** lire les transcripts lui-même : la valeur de cette architecture tient à l'isolation de contexte par vidéo.
 
 ### Étape 6 — Subagent final : consolidation des Enjeux
 
-Une fois **toutes** les fiches vidéo du batch écrites, lancer un dernier subagent.
+Une fois **toutes** les fiches vidéo du batch écrites, lancer un dernier subagent via `Agent` (subagent_type: `general-purpose`).
 
 **Mission :**
 - Lire **uniquement les fiches vidéo produites par le batch** (lister les chemins), **pas les transcripts bruts**
@@ -120,9 +128,13 @@ Une fois **toutes** les fiches vidéo du batch écrites, lancer un dernier subag
 - Pour chaque enjeu identifié, appeler `write-enjeu` **une seule fois** avec la vue d'ensemble du corpus
 - Ne pas committer
 
-**Pourquoi lire les fiches vidéo et pas les transcripts** : la granularité « fiche vidéo » a déjà extrait les thèses et données matérielles à l'étape 5. Le subagent final peut donc voir les récurrences sans saturer son contexte avec des transcripts bruts.
+**Pourquoi lire les fiches vidéo et pas les transcripts** : la granularité « fiche vidéo » a déjà extrait les thèses et données matérielles à l'étape 5. Le subagent final peut donc voir les récurrences cross-vidéos sans que son contexte soit saturé par des transcripts bruts — ce qui recréerait exactement le problème de compaction que cette architecture évite.
 
-**Rappel** : un Enjeu existe parce qu'il est un **combat stratégique récurrent** de la source, pas un simple thème. Ne pas créer de fiche Enjeu pour un sujet isolé d'une seule vidéo.
+**Contenu du briefing à transmettre :**
+- Liste des chemins des fiches vidéo du batch
+- Liste des fiches Enjeux existantes à considérer pour enrichissement
+- Rappel : un Enjeu existe parce qu'il est un **combat stratégique récurrent** de la source, pas un simple thème. Ne pas créer de fiche Enjeu pour un sujet isolé d'une seule vidéo.
+- **Interdit absolu de référencer le « batch »** dans les fiches produites
 
 ### Étape 7 — Vérification liens orphelins
 
@@ -154,7 +166,7 @@ Fiches créées: X (liste)
 Fiches enrichies: Y (liste)
 Enjeux consolidés: Z (liste)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
 1. `git add` fichier par fichier (pas `-A`)
@@ -184,14 +196,14 @@ Présenter :
 
 ## Règles
 
-- **Pas de compaction multi-vidéos.** L'orchestrateur (qui exécute cette skill) ne lit **jamais** de transcript lui-même. Chaque transcript est lu dans un subagent dédié.
+- **Pas de compaction multi-vidéos.** L'orchestrateur (qui exécute cette skill) ne lit **jamais** de transcript lui-même. Chaque transcript est lu dans un subagent dédié. Si l'orchestrateur se retrouve à lire 2 transcripts dans la même conversation, c'est un bug d'architecture — relancer en subagents séparés.
 - **Les Enjeux sont consolidés, jamais enrichis incrémentalement.** Un seul appel `write-enjeu` par enjeu, par le subagent final, à partir des fiches vidéo. Si un subagent vidéo tente d'écrire ou enrichir un Enjeu, c'est un bug.
-- **Le subagent final ne lit pas les transcripts.** Sa valeur tient précisément à travailler à la granularité « fiche vidéo ».
-- **Ordre chronologique et séquentiel.** Les subagents vidéo sont lancés un par un, jamais en parallèle (conflits sur fiches partagées).
-- **Un seul commit, merge direct dans develop.** Un batch = 1 branche, 1 commit, 1 merge `--no-ff` dans `develop`. Branche de travail supprimée après merge.
-- **Taille du batch.** Minimum 2 vidéos. Moins de 2, utiliser `ingest-video`.
-- **Fichier de suivi obligatoire.** Cette skill ne travaille pas à partir d'un sujet libre, d'une liste ad-hoc ou d'un bloc temporel.
-- **Ne jamais référencer le « batch » dans les fiches.** Le découpage en batches est un artefact du workflow — les lecteurs des fiches n'y ont pas accès. Reformuler en nommant le sujet réel. Cette règle ne s'applique pas aux fichiers de suivi (explicitement des fichiers de travail).
+- **Le subagent final ne lit pas les transcripts.** Sa valeur tient précisément à travailler à la granularité « fiche vidéo » — sinon on recrée le problème de compaction initial.
+- **Ordre chronologique et séquentiel.** Les subagents vidéo sont lancés un par un, dans l'ordre chronologique, pour que l'évolution temporelle soit lisible et que chaque subagent voie les enrichissements précédents. Jamais en parallèle (conflits sur fiches partagées).
+- **Un seul commit, merge direct dans develop.** Même si le batch couvre 10 vidéos, il produit 1 branche, 1 commit, 1 merge `--no-ff` dans `develop`. La branche de travail est supprimée après le merge (locale + distante).
+- **Taille du batch.** Minimum 2 vidéos. Moins de 2, utiliser `ingest-video`. Pas de limite supérieure — chaque transcript étant lu par un subagent dédié, la taille du batch n'affecte pas la qualité d'analyse.
+- **Fichier de suivi obligatoire.** Cette skill ne travaille pas à partir d'un sujet libre, d'une liste ad-hoc ou d'un bloc temporel. Si l'utilisateur n'en a pas, lui demander d'en créer un (ou utiliser `ingest-video` pour une seule vidéo).
+- **Ne jamais référencer le « batch » dans les fiches.** Le découpage en batches est un artefact du workflow d'ingestion — les lecteurs des fiches (Concepts, Enjeux, Individus, Organisations, Vidéos) n'ont pas accès à cette information et ne peuvent pas comprendre des formulations comme « batch D », « ce batch », « le corpus batch », « cf. batch F », « apports du batch X ». Reformuler en nommant le sujet réel (par exemple : « l'arc thématique sur X », « le corpus Y », « les vidéos sur Z », ou simplement supprimer la référence). Cette règle ne s'applique pas aux fichiers de suivi d'ingestion qui sont explicitement des fichiers de travail.
 
 ---
 
