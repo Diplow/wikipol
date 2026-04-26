@@ -4,9 +4,10 @@ description: >
   Ingère plusieurs transcripts liés à un même sujet via un fichier de suivi d'ingestion
   (ex: un batch chronologique, un batch thématique). Chaque vidéo est confiée à un subagent dédié
   pour préserver la finesse analytique du transcript — pas de compaction multi-vidéos. Un dernier
-  subagent consolide les Enjeux à partir des fiches vidéo produites (pas des transcripts). Déclencher
-  quand l'utilisateur dit "ingérer le batch X", "ingère le prochain batch", "batch ingest", ou
-  fournit explicitement un fichier de suivi pointant vers un sous-batch non réalisé.
+  subagent consolide les fiches advanced (Enjeux, et selon activation : Conjonctures, Possibles,
+  Methodes) à partir des fiches vidéo produites — pas des transcripts. Déclencher quand l'utilisateur
+  dit "ingérer le batch X", "ingère le prochain batch", "batch ingest", ou fournit explicitement
+  un fichier de suivi pointant vers un sous-batch non réalisé.
 date created: Monday, April 13th 2026, 12:00:00 pm
 date modified: 2026-04-20
 skill_version: ingest-batch-2026-04-20
@@ -18,19 +19,19 @@ skill_version: ingest-batch-2026-04-20
 
 Cette skill ingère **plusieurs transcripts liés à un même sujet** via un fichier de suivi. Elle existe parce qu'ingérer N transcripts dans un même contexte **fait perdre la substance analytique** : quand un agent lit 6 transcripts puis écrit les fiches, la compaction efface les données chiffrées, les théorisations, les formulations marquantes — il ne reste que l'ossature narrative.
 
-**Principe fondamental : pas de compaction multi-vidéos.** Chaque transcript est lu par un **subagent dédié** qui produit dans la foulée la fiche vidéo et les fiches Concepts/Individus/Organisations associées, pendant que le transcript est encore entier dans sa fenêtre de contexte. Seuls les Enjeux sont consolidés en fin de batch, par un subagent final qui lit les **fiches vidéo produites** (pas les transcripts) — à cette granularité, on voit les récurrences cross-vidéos sans noyer les détails.
+**Principe fondamental : pas de compaction multi-vidéos.** Chaque transcript est lu par un **subagent dédié** qui produit dans la foulée la fiche vidéo et les fiches basics associées (Concepts, Individus, Organisations, Evenements si activés), pendant que le transcript est encore entier dans sa fenêtre de contexte. Les fiches **advanced** (Enjeux, et selon activation Conjonctures/Possibles/Methodes) sont consolidées en fin de batch, par un subagent final qui lit les **fiches vidéo produites** (pas les transcripts) — à cette granularité, on voit les récurrences cross-vidéos sans noyer les détails.
 
 **Conventions partagées** (nommage, wikilinks, frontmatter, git) : voir `BUILD.md` de WikiPol.
 **Contexte éditorial de la source** (ton, principes, attribution) : voir `CLAUDE.md` de la source.
 **Taxonomie de la source** (domaines, thèmes, enjeux) : voir `BUILD.md` de la source.
 
-**Skills appelées (par les subagents) :**
+**Skills appelées (par les subagents, selon les `content_types` activés dans `source.yaml`) :**
 - `gather-context` — état actuel du vault sur le sujet (une fois, en amont)
-- `write-video` — fiche vidéo standard (cas par défaut)
-- `write-book` — fiche Livre à la place de la fiche vidéo pour les chroniques d'ouvrage
-- `write-entity` — individus et organisations (appelée par chaque subagent vidéo)
-- `write-concept` — concepts analytiques (appelée par chaque subagent vidéo)
-- `write-enjeu` — enjeux stratégiques (appelée par le subagent final de consolidation)
+- `write-video` / `write-book` — fiche-pivot par vidéo (basic, par chaque subagent vidéo)
+- `write-entity` — individus et organisations (basic, par chaque subagent vidéo)
+- `write-concept` — concepts analytiques (basic, par chaque subagent vidéo)
+- `write-evenement` — événements datés analysés (basic, par chaque subagent vidéo si l'événement est central à la vidéo ; sinon réservé au subagent final si l'événement émerge transversalement)
+- `write-enjeu` / `write-conjoncture` / `write-possible` / `write-methode` — fiches advanced (consolidation finale uniquement, pas par les subagents vidéo)
 
 **Différences clés avec `ingest-video` :**
 - Entrée : un **fichier de suivi** pointant vers un sous-batch (pas de sélection automatique ni de sujet libre)
@@ -99,8 +100,8 @@ Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent 
   - Chronique d'ouvrage (format « J'ai lu » ou similaire) → `write-book` (fiche dans `Livres/`, remplace la fiche Vidéo). Critère : la vidéo est majoritairement consacrée à la restitution et à l'appréciation d'un ouvrage unique.
 - Créer ou enrichir les fiches Individus/Organisations mentionnés en appelant `write-entity` par entité. Pour une chronique livre, toujours créer/enrichir la fiche Individu de l'auteur du livre.
 - Créer ou enrichir les fiches Concepts mobilisés en appelant `write-concept` par concept
-- **Ne jamais toucher aux fiches Enjeux** (dossier `Enjeux/`) — ce sera le rôle du subagent final
-- Ne pas committer, ne pas pusher, **ne pas créer de branche git**, ne pas modifier l'Inventaire ni le fichier de suivi — se limiter aux fichiers dans `Videos/`, `Livres/`, `Individus/`, `Organisations/`, `Concepts/`
+- **Ne jamais toucher aux fiches advanced** (dossiers `Enjeux/`, `Conjonctures/`, `Possibles/`, `Methodes/` — selon ce qui est activé dans la source) — ce sera le rôle du subagent final
+- Ne pas committer, ne pas pusher, **ne pas créer de branche git**, ne pas modifier l'Inventaire ni le fichier de suivi — se limiter aux fichiers basics activés (typiquement `Videos/`, `Livres/`, `Individus/`, `Organisations/`, `Concepts/`, `Evenements/`)
 
 **Contenu du briefing à transmettre au subagent :**
 - Chemin du transcript à lire (unique)
@@ -117,23 +118,32 @@ Pour **chaque vidéo** du batch, dans l'ordre chronologique, lancer un subagent 
 
 Si un subagent échoue ou produit un résultat manifestement incomplet, analyser la cause et le relancer — ne pas passer à la vidéo suivante avec un état incohérent. Entre deux lancements, rappeler à l'orchestrateur (soi-même) qu'il ne doit **pas** lire les transcripts lui-même : la valeur de cette architecture tient à l'isolation de contexte par vidéo.
 
-### Étape 6 — Subagent final : consolidation des Enjeux
+### Étape 6 — Subagent final : consolidation des fiches advanced
 
-Une fois **toutes** les fiches vidéo du batch écrites, lancer un dernier subagent via `Agent` (subagent_type: `general-purpose`).
+Une fois **toutes** les fiches vidéo (et autres basics) du batch écrites, lancer un dernier subagent via `Agent` (subagent_type: `general-purpose`). Ce subagent consolide les types **advanced** activés dans `source.yaml:content_types`.
 
 **Mission :**
 - Lire **uniquement les fiches vidéo produites par le batch** (lister les chemins), **pas les transcripts bruts**
-- Lire `Sources/.context-tmp.md` puis **ouvrir les fiches Enjeux existantes listées** pour enrichir plutôt que doublonner
-- Identifier les enjeux stratégiques de la source touchés par le corpus : récurrences entre vidéos, nouveaux arguments, évolutions temporelles, contradictions internes
-- Pour chaque enjeu identifié, appeler `write-enjeu` **une seule fois** avec la vue d'ensemble du corpus
+- Lire `Sources/.context-tmp.md` puis **ouvrir les fiches advanced existantes listées** (Enjeux, et selon activation : Conjonctures, Possibles, Methodes) pour enrichir plutôt que doublonner
+- Identifier les éléments advanced touchés par le corpus :
+  - **Enjeux** — récurrences de combat, nouveaux arguments, évolutions temporelles, contradictions internes
+  - **Conjonctures** (si activées) — diagnostics du moment révisés ou consolidés par le corpus
+  - **Possibles** (si activés) — scénarios alternatifs articulés ou raffinés
+  - **Methodes** (si activées) — procédures explicitées ou raffinées
+- Pour chaque élément advanced identifié, appeler la skill correspondante **une seule fois** avec la vue d'ensemble du corpus
 - Ne pas committer
 
 **Pourquoi lire les fiches vidéo et pas les transcripts** : la granularité « fiche vidéo » a déjà extrait les thèses et données matérielles à l'étape 5. Le subagent final peut donc voir les récurrences cross-vidéos sans que son contexte soit saturé par des transcripts bruts — ce qui recréerait exactement le problème de compaction que cette architecture évite.
 
 **Contenu du briefing à transmettre :**
 - Liste des chemins des fiches vidéo du batch
-- Liste des fiches Enjeux existantes à considérer pour enrichissement
-- Rappel : un Enjeu existe parce qu'il est un **combat stratégique récurrent** de la source, pas un simple thème. Ne pas créer de fiche Enjeu pour un sujet isolé d'une seule vidéo.
+- Liste des fiches advanced existantes à considérer pour enrichissement (par type activé)
+- Liste des types advanced **activés** dans `source.yaml:content_types` — seuls ces types sont autorisés à la consolidation. Les types désactivés sont à ignorer.
+- Rappels de seuil par type :
+  - Enjeu : combat stratégique **récurrent** (pas un sujet isolé d'une seule vidéo).
+  - Conjoncture : diagnostic du moment posé explicitement (pas une déduction).
+  - Possible : scénario alternatif **articulé** par la source, avec acteurs et mécanismes.
+  - Methode : procédure **décomposable en étapes**, enseignée ou systématiquement appliquée.
 - **Interdit absolu de référencer le « batch »** dans les fiches produites
 
 ### Étape 7 — Vérification liens orphelins
@@ -197,7 +207,7 @@ Présenter :
 ## Règles
 
 - **Pas de compaction multi-vidéos.** L'orchestrateur (qui exécute cette skill) ne lit **jamais** de transcript lui-même. Chaque transcript est lu dans un subagent dédié. Si l'orchestrateur se retrouve à lire 2 transcripts dans la même conversation, c'est un bug d'architecture — relancer en subagents séparés.
-- **Les Enjeux sont consolidés, jamais enrichis incrémentalement.** Un seul appel `write-enjeu` par enjeu, par le subagent final, à partir des fiches vidéo. Si un subagent vidéo tente d'écrire ou enrichir un Enjeu, c'est un bug.
+- **Les fiches advanced sont consolidées, jamais enrichies incrémentalement.** Un seul appel par élément (Enjeu, Conjoncture, Possible, Methode), par le subagent final, à partir des fiches basics produites. Si un subagent vidéo tente d'écrire ou enrichir une fiche advanced, c'est un bug.
 - **Le subagent final ne lit pas les transcripts.** Sa valeur tient précisément à travailler à la granularité « fiche vidéo » — sinon on recrée le problème de compaction initial.
 - **Ordre chronologique et séquentiel.** Les subagents vidéo sont lancés un par un, dans l'ordre chronologique, pour que l'évolution temporelle soit lisible et que chaque subagent voie les enrichissements précédents. Jamais en parallèle (conflits sur fiches partagées).
 - **Un seul commit, merge direct dans develop.** Même si le batch couvre 10 vidéos, il produit 1 branche, 1 commit, 1 merge `--no-ff` dans `develop`. La branche de travail est supprimée après le merge (locale + distante).

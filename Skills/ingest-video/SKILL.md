@@ -22,13 +22,19 @@ Cette skill orchestre l'ingestion d'un transcript de vidéo dans le vault d'une 
 **Contexte éditorial de la source** (ton, principes, pièges, attribution) : voir `CLAUDE.md` de la source courante.
 **Taxonomie de la source** (domaines, thèmes, enjeux) : voir `BUILD.md` de la source courante.
 
-**Skills appelées :**
+**Skills appelées (selon les `content_types` activés dans `source.yaml`) :**
 - `gather-context` — rassemble le contexte vault sur les sujets de la vidéo
-- `write-video` — rédige la fiche vidéo (cas standard)
-- `write-book` — rédige une fiche Livres/ à la place de la fiche vidéo, pour les chroniques d'ouvrage
-- `write-entity` — rédige/enrichit les fiches individus et organisations
-- `write-concept` — rédige/enrichit les fiches concepts
-- `write-enjeu` — rédige/enrichit les fiches enjeux
+- `write-video` — rédige la fiche vidéo (cas standard, basic)
+- `write-book` — rédige une fiche Livres/ à la place de la fiche vidéo, pour les chroniques d'ouvrage (basic, optionnel)
+- `write-entity` — rédige/enrichit les fiches individus et organisations (basic)
+- `write-concept` — rédige/enrichit les fiches concepts (basic)
+- `write-evenement` — rédige/enrichit une fiche événement quand le transcript analyse un fait daté singulier (basic, optionnel)
+- `write-enjeu` — rédige/enrichit les fiches enjeux (advanced)
+- `write-conjoncture` — rédige/enrichit une fiche conjoncture quand un transcript révise un diagnostic du moment (advanced, optionnel)
+- `write-possible` — rédige/enrichit une fiche possible quand un transcript articule un scénario alternatif (advanced, optionnel)
+- `write-methode` — rédige/enrichit une fiche méthode quand un transcript explicite une procédure analytique (advanced, optionnel)
+
+Avant d'invoquer une skill `write-*`, vérifier que son type est activé dans `source.yaml:content_types` via `cfg.content_type_enabled("Evenements")` (ou le type concerné). Une skill invoquée pour un type désactivé doit interrompre et signaler.
 
 ---
 
@@ -101,14 +107,25 @@ Pour chaque entité identifiée à l'étape 4, déterminer si la fiche existe ou
 
 ### Étape 7 — Rédiger les fiches
 
-Appeler les skills spécialisées dans cet ordre :
+Appeler les skills spécialisées dans cet ordre. Avant chaque appel, vérifier que le type est activé dans `source.yaml:content_types` (cf. `cfg.content_type_enabled(...)` ; sauter si désactivé).
+
+**Basics** (créés à partir de ce que dit le transcript) :
 
 1. **Fiche-pivot** — Créer la fiche pivot selon le type choisi à l'étape 4 :
    - Cas standard → **`write-video`** (fiche `Videos/`)
-   - Chronique d'ouvrage → **`write-book`** (fiche `Livres/` — l'embed YouTube et le lien transcript vivent ici, pas de fiche Videos/ pour cette vidéo)
+   - Chronique d'ouvrage → **`write-book`** (fiche `Livres/` — l'embed YouTube et le lien transcript vivent ici, pas de fiche Videos/ pour cette vidéo). Requiert `Livres` activé.
 2. **`write-entity`** — Pour chaque individu et organisation mentionné significativement. Pour une chronique livre, **toujours** créer/enrichir la fiche Individu de l'auteur du livre.
 3. **`write-concept`** — Pour chaque concept analytique identifié.
-4. **`write-enjeu`** — Pour chaque enjeu stratégique avancé par la vidéo. **Note** : write-enjeu bénéficie particulièrement du contexte multi-vidéos.
+4. **`write-evenement`** — Si le transcript analyse en profondeur un événement daté singulier (≥1-2 minutes ou élément central de la vidéo). Requiert `Evenements` activé. Seuil moyen : préférer un wikilink dans la fiche-pivot à une fiche Evenement vide.
+
+**Advanced** (synthèse à partir de fiches existantes — appeler seulement quand le transcript courant fournit matière à *réviser* la fiche advanced, pas par défaut) :
+
+5. **`write-enjeu`** — Pour chaque enjeu stratégique avancé par la vidéo. **Note** : write-enjeu bénéficie particulièrement du contexte multi-vidéos ; si la vidéo n'apporte pas de nouvel argument à un Enjeu existant, ne pas l'appeler.
+6. **`write-conjoncture`** — Seulement si le transcript reformule, confirme ou révise significativement un diagnostic du moment historique. Requiert `Conjonctures` activé.
+7. **`write-possible`** — Seulement si le transcript articule explicitement un scénario alternatif (avec acteurs, mécanismes, conditions). Requiert `Possibles` activé.
+8. **`write-methode`** — Seulement si le transcript explicite ou raffine une procédure analytique (étapes décomposables). Requiert `Methodes` activé.
+
+Pour les types advanced, en mode batch (`ingest-batch`), réserver les appels au subagent final de consolidation — pas au subagent vidéo.
 
 ### Étape 8 — Vérification des liens orphelins
 
