@@ -52,6 +52,18 @@ class SourceConfig:
     # Claude
     default_model: str
 
+    # Types de fiches activés (whitelist stricte de source.yaml:content_types).
+    # Conserve la casse du yaml ("Individus", "Enjeux", …).
+    enabled_content_types: list[str]
+
+    def content_type_enabled(self, name: str) -> bool:
+        """Renvoie True si le type `name` est activé pour cette source.
+
+        Comparaison insensible à la casse pour tolérer "Enjeux", "enjeux", "ENJEUX".
+        """
+        target = name.lower()
+        return any(t.lower() == target for t in self.enabled_content_types)
+
 
 def _find_source_root(start: str) -> str:
     """Remonte depuis `start` jusqu'à trouver un source.yaml. Renvoie le dossier contenant."""
@@ -102,6 +114,16 @@ def load_source(path: str | None = None) -> SourceConfig:
     inventaire_rel = files.get("inventaire", "Sources/Inventaire.md")
     tracking_rel = files.get("chronologique", f"{src.get('slug', 'source').upper()}_CHRONOLOGIQUE.md")
 
+    # Aplatit content_types: { raw: {Transcripts: true}, basic: {...}, advanced: {...} }
+    # en une liste à plat des types activés.
+    content_types = data.get("content_types", {}) or {}
+    enabled: list[str] = []
+    for tier_name in ("raw", "basic", "advanced"):
+        tier = content_types.get(tier_name, {}) or {}
+        for type_name, value in tier.items():
+            if value:
+                enabled.append(type_name)
+
     return SourceConfig(
         name=src.get("name", ""),
         slug=src.get("slug", ""),
@@ -117,6 +139,7 @@ def load_source(path: str | None = None) -> SourceConfig:
         default_branch=git.get("default_branch", "develop"),
         ingest_branch_prefix=git.get("ingest_branch_prefix", "ingest-batch/"),
         default_model=claude.get("default_model", "sonnet"),
+        enabled_content_types=enabled,
     )
 
 

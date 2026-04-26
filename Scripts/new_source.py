@@ -17,8 +17,10 @@ Résultat : Sources/MaChaine/ est créé avec :
     - BUILD.md                     (taxonomie locale à construire)
     - MACHAINE_CHRONOLOGIQUE.md    (fichier de suivi vide)
     - Sources/Inventaire.md        (inventaire vide)
-    - Videos/ Individus/ Organisations/ Concepts/ Enjeux/ Sources/Transcripts/
     - .obsidian/                   (pour qu'Obsidian reconnaisse le vault)
+    - Un dossier par type de fiche activé dans source.yaml:content_types
+      (par défaut : Videos, Individus, Organisations, Concepts, Enjeux,
+       Sources/Transcripts ; voir BUILD.md de WikiPol pour les types optionnels).
 """
 import os
 import re
@@ -32,6 +34,18 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WIKIPOL_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 TEMPLATES_DIR = os.path.join(WIKIPOL_ROOT, "Templates")
 SOURCES_DIR = os.path.join(WIKIPOL_ROOT, "Sources")
+
+# Types activés par défaut pour une nouvelle source. Doit rester aligné avec
+# le bloc `content_types:` de Templates/source.yaml.tmpl.
+# Voir BUILD.md de WikiPol pour la classification raw/basic/advanced.
+DEFAULT_ENABLED_TYPES = [
+    "Transcripts",   # raw
+    "Individus",     # basic
+    "Organisations", # basic
+    "Concepts",      # basic
+    "Videos",        # basic
+    "Enjeux",        # advanced
+]
 
 
 def parse_args(argv):
@@ -95,20 +109,15 @@ def create_source(name: str, slug: str, channel_url: str, handle: str,
         "SLUG_UPPER": slug_upper,
     }
 
-    # 1. Dossiers
-    subdirs = [
-        "Videos",
-        "Livres",
-        "Individus",
-        "Organisations",
-        "Concepts",
-        "Enjeux",
-        "Sources",
-        "Sources/Transcripts",
-        ".obsidian",
-    ]
-    for sd in subdirs:
-        os.makedirs(os.path.join(source_dir, sd), exist_ok=True)
+    # 1. Dossiers : un par type activé (sauf Transcripts → Sources/Transcripts).
+    #    + `Sources/` pour Inventaire et Transcripts ; `.obsidian/` pour le vault.
+    os.makedirs(os.path.join(source_dir, "Sources"), exist_ok=True)
+    os.makedirs(os.path.join(source_dir, ".obsidian"), exist_ok=True)
+    for type_name in DEFAULT_ENABLED_TYPES:
+        if type_name == "Transcripts":
+            os.makedirs(os.path.join(source_dir, "Sources", "Transcripts"), exist_ok=True)
+        else:
+            os.makedirs(os.path.join(source_dir, type_name), exist_ok=True)
 
     # 2. source.yaml
     render_template(
@@ -162,6 +171,11 @@ def create_source(name: str, slug: str, channel_url: str, handle: str,
 def print_next_steps(source_dir: str, name: str, tracking_filename: str):
     rel = os.path.relpath(source_dir, WIKIPOL_ROOT).replace(os.sep, "/")
     print(f"\n✓ Source créée : {source_dir}\n")
+    print(f"  Types activés (content_types dans source.yaml) :")
+    print(f"    {', '.join(DEFAULT_ENABLED_TYPES)}")
+    print(f"  Pour activer Livres / Evenements / Conjonctures / Possibles / Methodes,")
+    print(f"  passer le type à `true` dans {rel}/source.yaml et créer le dossier.")
+    print()
     print("Prochaines étapes :")
     print()
     print(f"1. Remplir le contexte éditorial")
