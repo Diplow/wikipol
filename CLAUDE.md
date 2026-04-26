@@ -26,12 +26,30 @@ Lorsque l'utilisateur demande d'ingérer une vidéo, d'analyser un batch, ou de 
 |--------|---------|----------|
 | WikiPol | `CLAUDE.md` (ce fichier) | Instructions méta : comment WikiPol fonctionne |
 | WikiPol | `BUILD.md` | Conventions universelles : nommage, wikilinks, frontmatter, git |
-| WikiPol | `Skills/` | 7 skills d'ingestion et d'écriture, agnostiques à la source |
+| WikiPol | `Skills/` | Skills d'ingestion et d'écriture génériques, agnostiques à la source |
 | WikiPol | `Scripts/` | Scripts Python (ingestion, bootstrap), lisent `source.yaml` |
 | Source | `CLAUDE.md` | Contexte éditorial spécifique : qui produit, ton, pièges |
 | Source | `BUILD.md` | Taxonomie locale : domaines, thèmes, enjeux (inductif) |
-| Source | `source.yaml` | Paramètres techniques : URL, slugs, chemins |
-| Source | `Videos/`, `Individus/`, `Organisations/`, `Concepts/`, `Enjeux/` | Contenu du vault |
+| Source | `source.yaml` | Paramètres techniques + `content_types` activés (whitelist stricte) |
+| Source | `Skills/` (optionnel) | Skills propres à la source qui surchargent les skills génériques par même nom |
+| Source | `Videos/`, `Individus/`, `Organisations/`, `Concepts/`, `Enjeux/`, etc. | Contenu du vault (un dossier par type activé) |
+
+## Découverte des skills
+
+Quand une skill est invoquée pendant un travail sur une source, regarder dans cet ordre :
+
+1. **`Sources/<NomSource>/Skills/<skill-name>/SKILL.md`** — skill propre à la source. Si elle existe, **elle l'emporte** sur la version générique (même nom = override).
+2. **`Skills/<skill-name>/SKILL.md`** à la racine de WikiPol — skill générique, valable pour toutes les sources.
+
+Le cas typique de skill source-spécifique : un format de fiche qui s'écarte trop du modèle générique pour être paramétrable (ex : un `write-enjeu` au format « loadout militant » plutôt que narratif). Tant que la signature de la skill (entrées, sortie, prérequis) reste la même, l'override est transparent pour les orchestrateurs (`ingest-video`, `ingest-batch`).
+
+Avant de créer une skill source-spécifique, vérifier que le besoin n'est pas paramétrable côté générique — un override coûte cher en maintenance.
+
+## Activation des types de fiches
+
+Chaque source déclare ses `content_types` activés dans `Sources/<NomSource>/source.yaml` (whitelist stricte). Une skill `write-*` invoquée pour un type désactivé doit s'interrompre et signaler à l'appelant. Avant d'écrire, charger la config via `Scripts/source_config.py` et vérifier `cfg.content_type_enabled("Enjeux")` (ou le type concerné).
+
+Voir `BUILD.md` pour la classification raw/basic/advanced et la spec frontmatter de chaque type.
 
 ## Créer une nouvelle source
 
