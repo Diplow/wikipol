@@ -1,0 +1,183 @@
+---
+name: synthesize-couche
+description: >
+  Crée ou enrichit une fiche couche advanced (Enjeu, Conjoncture, Possible, Methode, ou autre couche
+  définie par la source) à partir d'un batch de vidéos source. La skill orchestre — gather-context,
+  lecture des vidéos, commit git — et délègue la **seule rédaction** à la skill
+  source-spécifique `write-<couche>`. Déclencher quand l'utilisateur lance le script
+  `Scripts/synthesize.py`, ou demande "synthétise la fiche X (couche Y)", ou pointe explicitement
+  vers un batch de synthèse.
+date created: 2026-05-01
+date modified: 2026-05-01
+skill_version: synthesize-couche-2026-05-01
+---
+
+# Skill : Synthèse d'une fiche couche
+
+## Vue d'ensemble
+
+Cette skill **crée ou enrichit une seule fiche couche** (Enjeu, Conjoncture, Possible, Methode, ou toute autre couche déclarée par la source) à partir d'un **batch de synthèse** : un fichier `.md` qui désigne la couche cible, le nom de la fiche, les vidéos source à mobiliser, et éventuellement des fiches pivots à intégrer en priorité.
+
+**Pourquoi cette skill existe :** les fiches couche (advanced) sont par construction des **synthèses multi-vidéos** — elles agrègent ce que la source dit transversalement sur un sujet. Les écrire exige (a) du contexte vault, (b) la lecture des vidéos source pertinentes, (c) la connaissance du format de la couche dans la source. La skill prend en charge (a) et (b) ; elle délègue (c) à la skill source-spécifique `write-<couche>` qui sait comment formater la fiche.
+
+**Séparation des responsabilités :**
+- `synthesize-couche` (cette skill, niveau WikiPol) — orchestration : git, contexte, lecture, dispatch, commit, statut.
+- `write-<couche>` (skill source-spécifique, niveau `Sources/<NomSource>/Skills/`) — **seule rédaction** de la fiche cible. Reçoit le contexte, n'a aucune logique d'orchestration.
+
+**Conventions partagées** (nommage, wikilinks, frontmatter, git) : voir `BUILD.md` de WikiPol.
+**Contexte éditorial de la source** (ton, principes, attribution) : voir `CLAUDE.md` de la source.
+**Spécifications de la couche** (critère, format, frontmatter) : voir `BUILD.md` de la source.
+
+---
+
+## Entrée
+
+**Mode standard : un batch de synthèse** — un fichier `.md` typiquement stocké sous `Sources/<NomSource>/Syntheses/<slug>.md`. Frontmatter requis :
+
+```yaml
+---
+type: synthesis-batch
+target_couche: enjeu | conjoncture | possible | methode | <autre>
+target_name: "Nom exact de la fiche cible"
+generated: 2026-05-01
+statut: ⏳ en attente
+---
+```
+
+Corps :
+- `## Objectif` — 1-3 lignes décrivant ce que la synthèse doit produire.
+- `## Vidéos source` — liste de wikilinks vers des fiches `Videos/`.
+- `## Fiches pivots` (optionnel) — wikilinks vers Concepts/Individus/Organisations à intégrer en priorité.
+
+Si l'utilisateur fournit un sujet libre sans batch file, **demander qu'un batch file soit créé d'abord**. Cette skill ne travaille qu'à partir d'un batch existant — c'est ce qui garantit reproductibilité et logging.
+
+**Note worktree** : cette skill n'a **pas besoin** d'être lancée dans un worktree git. Elle travaille directement sur `develop`. Ne pas créer de worktree pour l'exécuter.
+
+---
+
+## Workflow
+
+### Étape 1 — Charger la config et le batch
+
+1. Identifier la source active (cwd ou via `Scripts/source_config.py`). Lire `Sources/<NomSource>/source.yaml`.
+2. Lire le batch file en entier. Extraire :
+   - `target_couche` (ex. `enjeu`, `conjoncture`, `possible`, `methode`)
+   - `target_name` (nom exact de la fiche cible)
+   - `statut` (doit être `⏳ en attente` ; sinon signaler à l'utilisateur)
+   - Liste des vidéos source (résolues par leur basename de fiche `Videos/`)
+   - Liste des fiches pivots (optionnelles)
+   - Texte de l'objectif
+3. **Vérifier l'activation de la couche** dans `source.yaml:content_types.couches`. Si désactivée, interrompre et demander à l'utilisateur de l'activer (ou de choisir une autre couche).
+4. **Vérifier que la skill `write-<target_couche>` existe** dans `Sources/<NomSource>/Skills/`. Si elle n'existe pas, interrompre — il manque une skill source-spécifique pour cette couche.
+
+### Étape 2 — État du vault (gather-context)
+
+Appeler `gather-context` avec `target_name` comme sujet. Cela produit `Sources/<NomSource>/.context-tmp.md` — une synthèse dense + une carte de liens.
+
+Ce fichier sera passé tel quel à la skill `write-<target_couche>` à l'étape 6.
+
+### Étape 3 — Vérifier l'existence de la fiche cible
+
+- Si le fichier `Sources/<NomSource>/<DossierCouche>/<target_name>.md` existe déjà → mode **enrichissement**.
+- Sinon → mode **création**.
+
+Le `<DossierCouche>` est dérivé de `target_couche` selon la convention de la source (ex : `enjeu` → `Enjeux/`, `conjoncture` → `Conjonctures/`).
+
+### Étape 4 — Mettre develop à jour
+
+1. `git fetch origin`
+2. `git checkout develop && git pull origin develop`
+
+Le travail se fait directement sur `develop` — pas de branche dédiée.
+
+### Étape 5 — Lire les vidéos source
+
+Pour chaque vidéo listée dans `## Vidéos source` du batch :
+1. Lire la fiche `Sources/<NomSource>/Videos/<basename>.md` en entier.
+2. Si une fiche pivot est listée, lire aussi la fiche correspondante en entier.
+
+**Ne pas lire les transcripts.** Comme pour `ingest-batch` étape 6, la granularité « fiche vidéo » suffit — elle a déjà extrait les thèses et données matérielles.
+
+### Étape 6 — Déléguer la rédaction à `write-<target_couche>`
+
+Lancer un subagent dédié via l'outil `Agent` (subagent_type: `general-purpose`) qui invoque la skill source-spécifique `write-<target_couche>`. Le subagent reçoit :
+
+- `target_name`
+- `target_couche`
+- Mode : création ou enrichissement (selon §3)
+- Chemin de `.context-tmp.md` (à lire intégralement)
+- Liste des chemins de fiches Vidéos lues à l'étape 5
+- Liste des chemins de fiches pivots
+- L'objectif extrait du batch file
+- Pointeurs vers `BUILD.md` source (spécification de la couche), `CLAUDE.md` source (ton), `BUILD.md` WikiPol (invariants).
+
+**Le subagent ne fait que rédiger.** Il ne touche pas à git, ne modifie pas le batch file, ne lance pas d'autres skills d'orchestration. Il produit ou enrichit `Sources/<NomSource>/<DossierCouche>/<target_name>.md` et signale les wikilinks orphelins éventuels.
+
+Si le subagent échoue ou produit une fiche manifestement incomplète, analyser la cause et le relancer — ne pas committer un état dégradé.
+
+### Étape 7 — Vérification liens orphelins
+
+Parcourir la fiche produite/enrichie. Pour chaque `[[wikilink]]`, vérifier que le fichier cible existe. Créer des ébauches pour les liens restants (en suivant les conventions de nommage de la source).
+
+### Étape 8 — Vérification orthographique
+
+Passe unique sur la fiche produite/enrichie.
+
+### Étape 9 — Mise à jour du statut du batch file
+
+Modifier le frontmatter du batch file : `statut: ⏳ en attente` → `statut: ✅ fait`. Ajouter optionnellement une ligne dans le corps avec la date de réalisation.
+
+### Étape 10 — Commit direct sur develop
+
+**Un seul commit pour la synthèse**, directement sur `develop` :
+
+```
+synthesize: COUCHE — Nom de la fiche cible
+
+Mode: création | enrichissement
+Vidéos source: N
+- {Titre 1}
+- {Titre 2}
+- ...
+
+Fiches créées: X (liste — fiche cible + ébauches orphelines créées)
+Fiches enrichies: Y (liste)
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+1. `git add` fichier par fichier (pas `-A`) — la fiche cible, les ébauches créées, le batch file mis à jour.
+2. Commit avec le message ci-dessus sur `develop`.
+3. Push : `git push origin develop`.
+
+### Étape 11 — Résumé à l'utilisateur
+
+Présenter :
+- Couche cible, nom de la fiche, mode (création vs enrichissement)
+- Nombre de vidéos source mobilisées
+- Liste des fiches créées (cible + ébauches) et enrichies
+- Confirmation que `develop` est à jour (commit poussé)
+- Inviter l'utilisateur à examiner la fiche produite
+
+---
+
+## Règles
+
+- **Skill `write-<couche>` source-spécifique obligatoire.** Cette skill ne contient aucune logique de rédaction — toute la spécificité de la couche (format, sections, frontmatter) vit dans la skill source. Si elle n'existe pas, interrompre.
+- **Une seule fiche cible par synthèse.** Si l'utilisateur veut produire plusieurs fiches, il doit créer plusieurs batch files et les lancer séparément.
+- **Pas de lecture de transcripts.** Comme pour `ingest-batch` en consolidation finale, on travaille à la granularité « fiche vidéo » — sinon on sature le contexte.
+- **Pas de modification de fiches basic.** La skill ne touche que (a) la fiche cible de la couche et (b) les ébauches qu'elle crée pour résoudre des wikilinks orphelins. Les fiches Videos/Concepts/Individus/Organisations sont **lues, pas modifiées**.
+- **Un seul commit sur develop.** Même si la fiche cible est enrichie + plusieurs ébauches sont créées, c'est 1 commit direct sur `develop` (pas de branche, pas de merge).
+- **Ne jamais référencer le « batch » ou la skill dans la fiche produite.** La fiche cible est lue par d'autres usagers du vault qui n'ont pas accès au batch file. Pas de phrase comme « consolidé à partir du batch X » — l'origine de la synthèse est dans l'historique git, pas dans la fiche.
+- **Statut obligatoirement à jour.** Si le batch file n'est pas marqué `✅ fait` à la fin, c'est un bug — la skill doit garantir l'idempotence (pas de relance accidentelle d'une synthèse déjà faite).
+
+---
+
+## Feedback système
+
+À la fin de la synthèse, évaluer si la rédaction a révélé des éléments qui devraient mettre à jour le système :
+- Le format de la couche dans `BUILD.md` source est-il toujours adéquat, ou la fiche produite a-t-elle dû le contourner ?
+- Des fiches pivots manquaient-elles dans le batch (visible aux orphelins fréquents) ? Suggérer à l'utilisateur de les ajouter dans les futurs batches.
+- Le `gather-context` a-t-il fourni assez de matière, ou la skill `write-<couche>` a-t-elle dû se rabattre sur des intuitions ?
+
+Signaler à l'utilisateur sans modifier automatiquement.

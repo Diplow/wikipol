@@ -44,13 +44,13 @@ Cette skill ingère **plusieurs transcripts liés à un même sujet** via un fic
 
 ## Entrée
 
-**Unique mode d'entrée : un fichier de suivi d'ingestion** (ex: `<SLUG>_CHRONOLOGIQUE.md` généré par `Scripts/generate_chronological.py`, ou un fichier de suivi thématique écrit à la main). Le fichier liste plusieurs sous-batches thématiques avec statut (`⏳ en attente`, `✅ fait`), slug de branche, et liste de vidéos cochables.
+**Unique mode d'entrée : un fichier de suivi d'ingestion** (ex: `<SLUG>_CHRONOLOGIQUE.md` généré par `Scripts/generate_chronological.py`, ou un fichier de suivi thématique écrit à la main). Le fichier liste plusieurs sous-batches thématiques avec statut (`⏳ en attente`, `✅ fait`) et liste de vidéos cochables.
 
 La skill prend **le premier batch non réalisé** dans l'ordre du fichier, **sauf si l'utilisateur désigne explicitement un batch**.
 
 Si l'utilisateur fournit autre chose (un sujet, une liste de vidéos, un bloc temporel) sans fichier de suivi, **demander qu'un fichier de suivi soit créé ou désigné d'abord** — cette skill ne travaille qu'à partir d'un fichier de suivi existant. Pour une vidéo isolée, orienter vers `ingest-video`.
 
-**Note worktree** : cette skill n'a **pas besoin** d'être lancée dans un worktree git. Elle travaille directement dans le répertoire principal sur une branche dédiée. Ne pas créer de worktree pour l'exécuter.
+**Note worktree** : cette skill n'a **pas besoin** d'être lancée dans un worktree git. Elle travaille directement sur `develop` dans le répertoire principal. Ne pas créer de worktree pour l'exécuter.
 
 ---
 
@@ -59,12 +59,11 @@ Si l'utilisateur fournit autre chose (un sujet, une liste de vidéos, un bloc te
 ### Étape 1 — Identifier le périmètre du batch
 
 1. Lire le fichier de suivi en entier.
-2. Identifier les sous-batches et leur statut. Chaque batch a typiquement un titre (`## Batch A — ...`), un **Statut**, un **Slug branche**, et une liste de vidéos (`- [ ]` / `- [x]`).
+2. Identifier les sous-batches et leur statut. Chaque batch a typiquement un titre (`## Batch A — ...`), un **Statut** et une liste de vidéos (`- [ ]` / `- [x]`).
 3. **Si l'utilisateur a désigné un batch explicitement**, prendre celui-là.
 4. **Sinon**, prendre le **premier batch non réalisé** dans l'ordre du fichier (ou dans l'ordre recommandé si une section « Notes et décisions » en définit un).
 5. Résoudre chaque vidéo cochable (`- [ ]`) du batch au transcript correspondant dans `Sources/Transcripts/` par correspondance fuzzy sur le basename (normalisation : minuscules, suppression des accents, ponctuation → espaces, compactage des espaces). Si aucune correspondance n'est trouvée pour une vidéo, signaler à l'utilisateur avant de continuer.
-6. Retenir le **thème parent** (ex. le nom du fichier de suivi) — il sert à nommer la branche.
-7. **Présenter la liste** à l'utilisateur pour validation avant de continuer — **sauf si le prompt contient "mode automatique"**, auquel cas procéder directement sans attendre de confirmation.
+6. **Présenter la liste** à l'utilisateur pour validation avant de continuer — **sauf si le prompt contient "mode automatique"**, auquel cas procéder directement sans attendre de confirmation.
 
 ### Étape 2 — État du vault (gather-context)
 
@@ -72,12 +71,12 @@ Appeler `gather-context` avec le sujet du batch (dérivé du titre du sous-batch
 
 Ce fichier est **passé tel quel** à chaque subagent vidéo et au subagent final de consolidation. Les subagents sont responsables d'ouvrir les fiches wikilinkées dont ils ont besoin — la carte liste, elle ne recopie pas le contenu. C'est explicité dans les briefings ci-dessous.
 
-### Étape 3 — Branche git
+### Étape 3 — Mettre develop à jour
 
 1. `git fetch origin`
 2. Se positionner sur `develop` à jour : `git checkout develop && git pull origin develop`
-3. Si le slug du sous-batch est déjà défini dans le fichier de suivi (champ `Slug branche`), l'utiliser tel quel. Sinon, générer un slug : minuscules, sans accents, tirets, ~40 chars max.
-4. Créer la branche de travail depuis `develop` : `git checkout -b ingest-batch/<slug>`
+
+Le travail se fait directement sur `develop` — pas de branche dédiée.
 
 ### Étape 4 — Résoudre l'ordre de lancement
 
@@ -160,9 +159,9 @@ Dans le fichier de suivi : cocher chaque vidéo ingérée (`- [ ]` → `- [x]`) 
 
 **Note sur l'Inventaire** : `Sources/Inventaire.md` est une vue DataviewJS dynamique — l'appariement transcript ↔ fiche vidéo se fait automatiquement. Aucune édition manuelle n'y est nécessaire ; s'assurer seulement que chaque fiche vidéo créée porte bien son `youtube_id` dans le frontmatter.
 
-### Étape 10 — Commit, merge dans develop et suppression de branche
+### Étape 10 — Commit direct sur develop
 
-**Un seul commit pour tout le batch :**
+**Un seul commit pour tout le batch**, directement sur `develop` :
 
 ```
 ingest-batch: {SUJET} ({N} vidéos)
@@ -179,20 +178,9 @@ Enjeux consolidés: Z (liste)
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
-1. `git add` fichier par fichier (pas `-A`)
-2. Commit avec le message ci-dessus sur la branche `ingest-batch/<slug>`
-3. Merger dans `develop` :
-   ```
-   git checkout develop
-   git pull origin develop
-   git merge --no-ff ingest-batch/<slug>
-   git push origin develop
-   ```
-4. Supprimer la branche de travail (locale et distante si elle a été poussée) :
-   ```
-   git branch -d ingest-batch/<slug>
-   git push origin --delete ingest-batch/<slug>  # ignorer l'erreur si non poussée
-   ```
+1. `git add` fichier par fichier (pas `-A`).
+2. Commit avec le message ci-dessus sur `develop`.
+3. Push : `git push origin develop`.
 
 ### Étape 11 — Résumé à l'utilisateur
 
@@ -200,7 +188,7 @@ Présenter :
 - Nombre de vidéos ingérées et cohérence temporelle du batch
 - Enjeux créés/enrichis par le subagent final, avec la rationalité
 - Nombre de fiches créées vs enrichies par catégorie
-- Confirmation que `develop` est à jour et la branche supprimée
+- Confirmation que `develop` est à jour (commit poussé)
 
 ---
 
@@ -210,7 +198,7 @@ Présenter :
 - **Les fiches advanced sont consolidées, jamais enrichies incrémentalement.** Un seul appel par élément (Enjeu, Conjoncture, Possible, Methode), par le subagent final, à partir des fiches basics produites. Si un subagent vidéo tente d'écrire ou enrichir une fiche advanced, c'est un bug.
 - **Le subagent final ne lit pas les transcripts.** Sa valeur tient précisément à travailler à la granularité « fiche vidéo » — sinon on recrée le problème de compaction initial.
 - **Ordre chronologique et séquentiel.** Les subagents vidéo sont lancés un par un, dans l'ordre chronologique, pour que l'évolution temporelle soit lisible et que chaque subagent voie les enrichissements précédents. Jamais en parallèle (conflits sur fiches partagées).
-- **Un seul commit, merge direct dans develop.** Même si le batch couvre 10 vidéos, il produit 1 branche, 1 commit, 1 merge `--no-ff` dans `develop`. La branche de travail est supprimée après le merge (locale + distante).
+- **Un seul commit sur develop.** Même si le batch couvre 10 vidéos, il produit 1 commit direct sur `develop` (pas de branche, pas de merge).
 - **Taille du batch.** Minimum 2 vidéos. Moins de 2, utiliser `ingest-video`. Pas de limite supérieure — chaque transcript étant lu par un subagent dédié, la taille du batch n'affecte pas la qualité d'analyse.
 - **Fichier de suivi obligatoire.** Cette skill ne travaille pas à partir d'un sujet libre, d'une liste ad-hoc ou d'un bloc temporel. Si l'utilisateur n'en a pas, lui demander d'en créer un (ou utiliser `ingest-video` pour une seule vidéo).
 - **Ne jamais référencer le « batch » dans les fiches.** Le découpage en batches est un artefact du workflow d'ingestion — les lecteurs des fiches (Concepts, Enjeux, Individus, Organisations, Vidéos) n'ont pas accès à cette information et ne peuvent pas comprendre des formulations comme « batch D », « ce batch », « le corpus batch », « cf. batch F », « apports du batch X ». Reformuler en nommant le sujet réel (par exemple : « l'arc thématique sur X », « le corpus Y », « les vidéos sur Z », ou simplement supprimer la référence). Cette règle ne s'applique pas aux fichiers de suivi d'ingestion qui sont explicitement des fichiers de travail.

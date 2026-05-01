@@ -3,7 +3,7 @@
 
 source:
   name: "{{SOURCE_NAME}}"                # nom affiché (commits, logs, docs)
-  slug: "{{SOURCE_SLUG}}"                # préfixe branches git, nom court
+  slug: "{{SOURCE_SLUG}}"                # nom court (logs, prompts)
   type: "youtube"                        # unique type supporté pour l'instant
   attribution: "{{SOURCE_ATTRIBUTION}}"  # phrase utilisée dans les fiches (ex: "la PaduTeam")
 
@@ -18,7 +18,6 @@ files:
 git:
   repo: "{{GIT_REPO}}"                   # ex: "username/reponame" (GitHub)
   default_branch: "develop"
-  ingest_branch_prefix: "ingest-batch/"
 
 claude:
   default_model: "sonnet"                # "sonnet" ou "opus"
@@ -28,7 +27,9 @@ claude:
 # - Les skills write-* refusent d'écrire un type désactivé.
 # - Pour activer un type plus tard : passer à `true` ici et créer le dossier
 #   à la main (ou via un script utilitaire).
-# Voir BUILD.md de WikiPol pour la spec frontmatter de chaque type.
+# Voir BUILD.md de WikiPol pour la spec frontmatter des types universels.
+# Les couches advanced (Enjeux, Conjonctures, Possibles, Methodes…) sont
+# définies par chaque source dans son BUILD.md.
 content_types:
   raw:
     Transcripts: true
@@ -37,9 +38,8 @@ content_types:
     Organisations: true
     Concepts: true
     Videos: true
-    Livres: false
     Evenements: false
-  advanced:
+  couches:
     Enjeux: true
     Conjonctures: false
     Possibles: false

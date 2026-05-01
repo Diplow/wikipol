@@ -172,24 +172,6 @@ def group_into_week_pairs(videos):
 
 
 # =====================================================================
-#  GÉNÉRATION DU SLUG DE BRANCHE
-# =====================================================================
-
-def make_branch_slug(cfg: SourceConfig, week_start, week_end) -> str:
-    """Slug de branche : {prefix}{source-slug}-YYYY-wNN-wMM."""
-    y1, w1 = week_start
-    y2, w2 = week_end
-    prefix = cfg.ingest_branch_prefix  # "ingest-batch/" par défaut
-    src = cfg.slug
-    if week_start == week_end:
-        return f"{prefix}{src}-{y1}-w{w1:02d}"
-    elif y1 == y2:
-        return f"{prefix}{src}-{y1}-w{w1:02d}-w{w2:02d}"
-    else:
-        return f"{prefix}{src}-{y1}-w{w1:02d}-{y2}-w{w2:02d}"
-
-
-# =====================================================================
 #  FORMATAGE DU FICHIER
 # =====================================================================
 
@@ -205,7 +187,6 @@ def format_week_range_title(week_start, week_end, date_start, date_end):
 
 def format_batch_section(cfg: SourceConfig, batch):
     num   = batch['batch_num']
-    slug  = make_branch_slug(cfg, batch['week_start'], batch['week_end'])
     title = format_week_range_title(
         batch['week_start'], batch['week_end'],
         batch['date_range_start'], batch['date_range_end']
@@ -218,7 +199,6 @@ def format_batch_section(cfg: SourceConfig, batch):
     if dense_warning:
         lines.append(dense_warning.strip())
     lines.append(f"Statut : ⏳ en attente")
-    lines.append(f"Slug branche : {slug}")
     lines.append("")
     for v in videos:
         lines.append(f"- [ ] {v['title']}")
@@ -337,7 +317,6 @@ def main():
         for b in batches:
             n = len(b['videos'])
             warn = f"  ⚠ batch dense" if n > WARN_BATCH_SIZE else ""
-            slug = make_branch_slug(cfg, b['week_start'], b['week_end'])
             print(f"  Batch {b['batch_num']:02d} : {b['date_range_start'].strftime('%Y-%m-%d')} → "
                   f"{b['date_range_end'].strftime('%Y-%m-%d')}  ({n} vidéos){warn}")
         print(f"\nTotal : {total_videos} vidéos en {len(batches)} batches")

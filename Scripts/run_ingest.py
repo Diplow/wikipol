@@ -64,7 +64,6 @@ def make_logger(log_path: str):
 
 BATCH_HEADER_RE = re.compile(r'^## Batch (\d+) —\s+(.+)$', re.MULTILINE)
 STATUS_RE       = re.compile(r'^Statut\s*:\s*(.+)$', re.MULTILINE)
-SLUG_RE         = re.compile(r'^Slug branche\s*:\s*(.+)$', re.MULTILINE)
 
 
 def parse_batches(tracking_path: str) -> list[dict]:
@@ -87,13 +86,10 @@ def parse_batches(tracking_path: str) -> list[dict]:
         title = hm.group(2).strip()
         sm = STATUS_RE.search(section)
         status = sm.group(1).strip() if sm else ''
-        slm = SLUG_RE.search(section)
-        slug = slm.group(1).strip() if slm else ''
         batches.append({
             'num'   : num,
             'title' : title,
             'status': status,
-            'slug'  : slug,
         })
     return sorted(batches, key=lambda b: b['num'])
 
@@ -230,7 +226,6 @@ def run_all(cfg: SourceConfig, dry_run=False, start_from=None, single_batch=None
     for i, batch in enumerate(pending):
         log(f"\n{'='*60}")
         log(f"[{i+1}/{n_pending}] Batch {batch['num']:02d} — {batch['title']}")
-        log(f"  Slug : {batch['slug']}")
         log(f"{'='*60}")
 
         attempts = 0

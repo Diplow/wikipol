@@ -6,8 +6,9 @@ WikiPol est l'ossature générique qui permet de construire un graphe de connais
 
 Une **source** est un vault Obsidian autonome rangé dans `Sources/<NomSource>/`. Chaque source :
 - définit son propre contexte éditorial dans `Sources/<NomSource>/CLAUDE.md` (ton, principes, pièges de lecture)
-- définit sa propre taxonomie dans `Sources/<NomSource>/BUILD.md` (domaines / thèmes / enjeux, construits par induction)
+- définit sa propre taxonomie dans `Sources/<NomSource>/BUILD.md` (domaines, thèmes, couches advanced, construits par induction)
 - déclare ses paramètres techniques dans `Sources/<NomSource>/source.yaml` (URL chaîne, slug git, chemins)
+- fournit ses propres skills `write-<couche>` (Enjeux, Conjonctures, Possibles, Methodes, etc.) dans `Sources/<NomSource>/Skills/` — WikiPol ne contient pas de version générique de ces skills
 
 Les skills Claude (`Skills/`), les scripts Python (`Scripts/`) et les conventions universelles (`BUILD.md`) sont partagés entre toutes les sources.
 
@@ -26,13 +27,13 @@ Lorsque l'utilisateur demande d'ingérer une vidéo, d'analyser un batch, ou de 
 |--------|---------|----------|
 | WikiPol | `CLAUDE.md` (ce fichier) | Instructions méta : comment WikiPol fonctionne |
 | WikiPol | `BUILD.md` | Conventions universelles : nommage, wikilinks, frontmatter, git |
-| WikiPol | `Skills/` | Skills d'ingestion et d'écriture génériques, agnostiques à la source |
-| WikiPol | `Scripts/` | Scripts Python (ingestion, bootstrap), lisent `source.yaml` |
+| WikiPol | `Skills/` | Skills d'ingestion, de synthèse et d'écriture génériques (basics) — agnostiques à la source |
+| WikiPol | `Scripts/` | Scripts Python (ingestion, synthèse, bootstrap), lisent `source.yaml` |
 | Source | `CLAUDE.md` | Contexte éditorial spécifique : qui produit, ton, pièges |
-| Source | `BUILD.md` | Taxonomie locale : domaines, thèmes, enjeux (inductif) |
+| Source | `BUILD.md` | Taxonomie locale : domaines, thèmes, spécifications des couches advanced (inductif) |
 | Source | `source.yaml` | Paramètres techniques + `content_types` activés (whitelist stricte) |
-| Source | `Skills/` (optionnel) | Skills propres à la source qui surchargent les skills génériques par même nom |
-| Source | `Videos/`, `Individus/`, `Organisations/`, `Concepts/`, `Enjeux/`, etc. | Contenu du vault (un dossier par type activé) |
+| Source | `Skills/` | Skills `write-<couche>` (Enjeux, Conjonctures, …) propres à la source ; peut aussi surcharger les skills génériques par même nom |
+| Source | `Videos/`, `Individus/`, `Organisations/`, `Concepts/`, plus les couches activées (ex: `Enjeux/`) | Contenu du vault (un dossier par type activé) |
 
 ## Découverte des skills
 
@@ -41,7 +42,9 @@ Quand une skill est invoquée pendant un travail sur une source, regarder dans c
 1. **`Sources/<NomSource>/Skills/<skill-name>/SKILL.md`** — skill propre à la source. Si elle existe, **elle l'emporte** sur la version générique (même nom = override).
 2. **`Skills/<skill-name>/SKILL.md`** à la racine de WikiPol — skill générique, valable pour toutes les sources.
 
-Le cas typique de skill source-spécifique : un format de fiche qui s'écarte trop du modèle générique pour être paramétrable (ex : un `write-enjeu` au format « loadout militant » plutôt que narratif). Tant que la signature de la skill (entrées, sortie, prérequis) reste la même, l'override est transparent pour les orchestrateurs (`ingest-video`, `ingest-batch`).
+**Skills `write-<couche>` source-spécifiques par construction.** Les skills qui rédigent les fiches couche advanced (`write-enjeu`, `write-conjoncture`, `write-possible`, `write-methode`, etc.) n'existent pas au niveau WikiPol — chaque source les fournit dans son propre `Skills/`. La skill `synthesize-couche` (générique, niveau WikiPol) les invoque par convention de nom.
+
+**Skills basic source-spécifiques (override).** Une source peut surcharger les skills basic génériques (`write-video`, `write-concept`, etc.) si son format diverge trop du modèle pour être paramétrable. Tant que la signature reste la même (entrées, sortie, prérequis), l'override est transparent pour les orchestrateurs (`ingest-video`, `ingest-batch`).
 
 Avant de créer une skill source-spécifique, vérifier que le besoin n'est pas paramétrable côté générique — un override coûte cher en maintenance.
 
@@ -49,7 +52,17 @@ Avant de créer une skill source-spécifique, vérifier que le besoin n'est pas 
 
 Chaque source déclare ses `content_types` activés dans `Sources/<NomSource>/source.yaml` (whitelist stricte). Une skill `write-*` invoquée pour un type désactivé doit s'interrompre et signaler à l'appelant. Avant d'écrire, charger la config via `Scripts/source_config.py` et vérifier `cfg.content_type_enabled("Enjeux")` (ou le type concerné).
 
-Voir `BUILD.md` pour la classification raw/basic/advanced et la spec frontmatter de chaque type.
+Voir `BUILD.md` pour la classification raw/basic/couches et la spec frontmatter des types universels (les couches sont définies par chaque source).
+
+## Synthèse de fiches couche
+
+Pour créer ou enrichir une fiche couche (Enjeu, Conjoncture, Possible, Methode, …), utiliser le workflow `synthesize` :
+
+```bash
+python Scripts/synthesize.py --source Sources/<NomSource> --batch <chemin-batch>.md
+```
+
+Le batch file (Markdown structuré) liste les vidéos source et précise la couche cible. Le script lance la skill `synthesize-couche` qui orchestre `gather-context`, lecture des vidéos, et délègue la rédaction à `write-<couche>` (skill source-spécifique).
 
 ## Créer une nouvelle source
 

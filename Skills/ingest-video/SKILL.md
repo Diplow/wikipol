@@ -4,7 +4,7 @@ description: >
   Orchestre l'ingestion d'un transcript de vidéo dans la base de connaissances Obsidian d'une source
   WikiPol. Coordonne les skills spécialisées : gather-context pour la recherche, puis write-video,
   write-entity, write-concept et write-enjeu pour la rédaction des fiches.
-  Gère aussi le workflow git (branche, commit, PR), la vérification ortho et les liens orphelins.
+  Gère aussi le commit git (direct sur develop), la vérification ortho et les liens orphelins.
   Déclencher quand l'utilisateur dit "ingérer", "ajouter au vault", "créer les fiches",
   "analyser cette vidéo pour Obsidian", ou toute demande combinant un transcript et la base de connaissances.
 date created: Tuesday, March 31st 2026, 10:29:39 am
@@ -52,11 +52,11 @@ Si l'utilisateur ne fournit ni URL, ni titre, ni transcript :
 
 **Note** : `Sources/Inventaire.md` est une vue DataviewJS dynamique — elle calcule ce croisement transcript ↔ fiche à la volée dans Obsidian, elle n'est pas lisible depuis le système de fichiers. C'est la raison pour laquelle on refait le croisement directement ici.
 
-### Étape 2 — Branche git
+### Étape 2 — Mettre develop à jour
 
-1. Générer le slug depuis le titre (minuscules, sans accents, tirets, ~50 chars max)
-2. `git checkout develop && git pull origin develop`
-3. `git checkout -b ingest/<slug>`
+1. `git checkout develop && git pull origin develop`
+
+Le travail se fait directement sur `develop` — pas de branche dédiée.
 
 ### Étape 3 — Lire le transcript
 
@@ -152,11 +152,11 @@ Se concentrer sur les noms étrangers et les personnalités secondaires.
 
 ### Étape 11 — Commit, push et PR
 
-Suivre le workflow git défini dans `BUILD.md` de WikiPol :
+Suivre le workflow git défini dans `BUILD.md` de WikiPol — commit direct sur `develop`, pas de branche :
 
 1. `git status` pour lister les fichiers modifiés
 2. `git add` par nom (pas `-A`)
-3. Commit structuré :
+3. Commit structuré sur `develop` :
    ```
    ingest: TITRE ABRÉGÉ DE LA VIDÉO
 
@@ -166,8 +166,7 @@ Suivre le workflow git défini dans `BUILD.md` de WikiPol :
 
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
-4. `git push -u origin ingest/<slug>`
-5. PR vers `develop` avec résumé d'ingestion
+4. `git push origin develop`
 
 ### Étape 12 — Résumé à l'utilisateur
 

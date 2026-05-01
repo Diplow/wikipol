@@ -47,7 +47,6 @@ class SourceConfig:
     # Git
     git_repo: str
     default_branch: str
-    ingest_branch_prefix: str
 
     # Claude
     default_model: str
@@ -114,12 +113,15 @@ def load_source(path: str | None = None) -> SourceConfig:
     inventaire_rel = files.get("inventaire", "Sources/Inventaire.md")
     tracking_rel = files.get("chronologique", f"{src.get('slug', 'source').upper()}_CHRONOLOGIQUE.md")
 
-    # Aplatit content_types: { raw: {Transcripts: true}, basic: {...}, advanced: {...} }
-    # en une liste à plat des types activés.
+    # Aplatit content_types: { raw: {...}, basic: {...}, couches: {...}, advanced: {...} }
+    # en une liste à plat des types activés. Itère sur tous les tiers présents — les noms
+    # de tier ne sont pas hardcodés (`couches` remplace progressivement `advanced`).
     content_types = data.get("content_types", {}) or {}
     enabled: list[str] = []
-    for tier_name in ("raw", "basic", "advanced"):
-        tier = content_types.get(tier_name, {}) or {}
+    for tier_name, tier in content_types.items():
+        tier = tier or {}
+        if not isinstance(tier, dict):
+            continue
         for type_name, value in tier.items():
             if value:
                 enabled.append(type_name)
@@ -137,7 +139,6 @@ def load_source(path: str | None = None) -> SourceConfig:
         transcripts_dir=os.path.join(source_root, "Sources", "Transcripts"),
         git_repo=git.get("repo", ""),
         default_branch=git.get("default_branch", "develop"),
-        ingest_branch_prefix=git.get("ingest_branch_prefix", "ingest-batch/"),
         default_model=claude.get("default_model", "sonnet"),
         enabled_content_types=enabled,
     )

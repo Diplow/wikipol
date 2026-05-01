@@ -37,14 +37,14 @@ SOURCES_DIR = os.path.join(WIKIPOL_ROOT, "Sources")
 
 # Types activés par défaut pour une nouvelle source. Doit rester aligné avec
 # le bloc `content_types:` de Templates/source.yaml.tmpl.
-# Voir BUILD.md de WikiPol pour la classification raw/basic/advanced.
+# Voir BUILD.md de WikiPol pour la classification raw/basic/couches.
 DEFAULT_ENABLED_TYPES = [
     "Transcripts",   # raw
     "Individus",     # basic
     "Organisations", # basic
     "Concepts",      # basic
     "Videos",        # basic
-    "Enjeux",        # advanced
+    "Enjeux",        # couche advanced
 ]
 
 
