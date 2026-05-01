@@ -20,5 +20,6 @@ venv/
 Thumbs.db
 .DS_Store
 
-# Scratch
-Sources/*/Sources/.context-tmp.md
+# Scratch (gather-context)
+.context-tmp.md
+Sources/*/.context-tmp.md
