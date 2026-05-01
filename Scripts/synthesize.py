@@ -14,6 +14,7 @@ Usage:
 import sys
 import os
 import re
+import json
 import subprocess
 from datetime import datetime
 
@@ -140,12 +141,90 @@ def check_skill_exists(cfg: SourceConfig, target_couche: str, log) -> bool:
 
 
 # =====================================================================
-#  INVOCATION CLAUDE
+#  INVOCATION CLAUDE — streaming
 # =====================================================================
+
+def _summarize_tool_input(name: str, inp: dict) -> str:
+    """Résume les paramètres d'un tool_use pour le log (une ligne courte)."""
+    if not isinstance(inp, dict):
+        return str(inp)[:100]
+    if name == 'Bash':
+        return (inp.get('description') or inp.get('command', ''))[:100]
+    if name == 'Read':
+        return os.path.basename(inp.get('file_path', ''))
+    if name in ('Write', 'Edit', 'NotebookEdit'):
+        return os.path.basename(inp.get('file_path', ''))
+    if name == 'Grep':
+        path = inp.get('path', '.')
+        base = os.path.basename(path.rstrip('/\\')) or path
+        return f"{inp.get('pattern', '')!r} in {base}"
+    if name == 'Glob':
+        return inp.get('pattern', '')
+    if name in ('Task', 'Agent'):
+        desc = inp.get('description', '')
+        sub = inp.get('subagent_type', '')
+        return f"{sub}: {desc}" if sub else desc
+    if name == 'TaskCreate':
+        return f"{len(inp.get('todos', []))} todos"
+    if name == 'Skill':
+        return inp.get('skill', '')
+    return str(inp)[:100]
+
+
+def stream_event(event: dict, log) -> None:
+    """Convertit un event JSON streamé de Claude CLI en ligne(s) de log lisibles."""
+    event_type = event.get('type')
+
+    if event_type == 'system' and event.get('subtype') == 'init':
+        model = event.get('model', '?')
+        cwd = event.get('cwd', '')
+        log(f"  [init] modèle={model}" + (f" cwd={os.path.basename(cwd)}" if cwd else ''))
+        return
+
+    if event_type == 'assistant':
+        msg = event.get('message', {}) or {}
+        for block in msg.get('content', []) or []:
+            btype = block.get('type')
+            if btype == 'text':
+                text = (block.get('text') or '').strip()
+                if text:
+                    for ln in text.splitlines():
+                        if ln.strip():
+                            log(f"  > {ln}")
+            elif btype == 'tool_use':
+                name = block.get('name', '?')
+                summary = _summarize_tool_input(name, block.get('input') or {})
+                log(f"  → {name}({summary})")
+            # Les blocks 'thinking' sont ignorés volontairement (verbeux)
+        return
+
+    if event_type == 'user':
+        msg = event.get('message', {}) or {}
+        for block in msg.get('content', []) or []:
+            if block.get('type') != 'tool_result':
+                continue
+            is_error = bool(block.get('is_error'))
+            marker = '✗' if is_error else '✓'
+            content = block.get('content', '')
+            if isinstance(content, list):
+                parts = [c.get('text', '') for c in content
+                         if isinstance(c, dict) and c.get('type') == 'text']
+                content = ' '.join(parts)
+            summary = str(content).replace('\n', ' ')[:140]
+            log(f"  ← {marker} {summary}")
+        return
+
+    if event_type == 'result':
+        duration_ms = event.get('duration_ms', 0) or 0
+        cost = event.get('total_cost_usd', 0) or 0
+        marker = 'ÉCHEC' if event.get('is_error') else 'OK'
+        log(f"  [result] {marker} en {duration_ms/1000:.1f}s, coût={cost:.4f}$")
+        return
+
 
 def run_synthesize(cfg: SourceConfig, batch_path: str, batch: dict,
                    log, dry_run: bool = False, model: str | None = None) -> bool:
-    """Invoque claude via la skill synthesize-couche. Retourne True si succès."""
+    """Invoque claude via la skill synthesize-couche en streaming. Retourne True si succès."""
     batch_relative = os.path.relpath(batch_path, cfg.source_root)
     prompt = (
         f"Synthétise la fiche \"{batch['target_name']}\" "
@@ -164,36 +243,54 @@ def run_synthesize(cfg: SourceConfig, batch_path: str, batch: dict,
         log(f"[DRY RUN] cwd          : {cfg.source_root}")
         return True
 
-    cmd = [CLAUDE_CMD, "--dangerously-skip-permissions", "--model", active_model, "-p", prompt]
-    log(f"Lancement : {' '.join(cmd[:3])} \"...\"")
+    cmd = [
+        CLAUDE_CMD,
+        "--dangerously-skip-permissions",
+        "--model", active_model,
+        "--verbose",
+        "--output-format", "stream-json",
+        "-p", prompt,
+    ]
+    log(f"Lancement : {' '.join(cmd[:3])} ... (streaming)")
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             encoding='utf-8',
             errors='replace',
-            timeout=TIMEOUT,
             cwd=cfg.source_root,
+            bufsize=1,
         )
-    except subprocess.TimeoutExpired:
-        log(f"TIMEOUT ({TIMEOUT}s) — synthèse {batch['target_name']}")
-        return False
     except FileNotFoundError:
         log(f"ERREUR : commande '{CLAUDE_CMD}' introuvable. Vérifier que claude CLI est installé.")
         sys.exit(1)
 
-    for line in (result.stdout or "").splitlines():
-        log(f"  stdout: {line}")
-    if result.stderr and result.stderr.strip():
-        for line in result.stderr.splitlines():
-            log(f"  stderr: {line}")
+    assert proc.stdout is not None
+    try:
+        for line in proc.stdout:
+            line = line.rstrip('\n').rstrip('\r')
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+                stream_event(event, log)
+            except json.JSONDecodeError:
+                log(f"  raw: {line}")
+    except KeyboardInterrupt:
+        log("Interrompu par l'utilisateur (Ctrl+C). Arrêt du subprocess…")
+        proc.kill()
+        proc.wait()
+        return False
 
-    if result.returncode == 0:
+    rc = proc.wait()
+
+    if rc == 0:
         log(f"✓ Synthèse {batch['target_name']} ({batch['target_couche']}) — succès.")
         return True
-    log(f"ÉCHEC (code {result.returncode}) — synthèse {batch['target_name']}")
+    log(f"ÉCHEC (code {rc}) — synthèse {batch['target_name']}")
     return False
 
 
