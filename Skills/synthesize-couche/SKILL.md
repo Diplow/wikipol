@@ -9,7 +9,7 @@ description: >
   vers un batch de synthèse.
 date created: 2026-05-01
 date modified: 2026-05-02
-skill_version: synthesize-couche-2026-05-02
+skill_version: synthesize-couche-2026-05-02b
 ---
 
 # Skill : Synthèse d'une fiche couche
@@ -23,6 +23,14 @@ Cette skill **crée ou enrichit une seule fiche couche** (Enjeu, Conjoncture, Po
 **Séparation des responsabilités :**
 - `synthesize-couche` (cette skill, niveau WikiPol) — orchestration : git, contexte, lecture, dispatch, commit, statut.
 - `write-<couche>` (skill source-spécifique, niveau `Sources/<NomSource>/Skills/`) — **seule rédaction** de la fiche cible. Reçoit le contexte, n'a aucune logique d'orchestration.
+
+**Sortie attendue à la fin de l'orchestration** — un commit unique qui modifie **trois ensembles de fichiers** :
+
+1. **La fiche couche cible** (créée ou enrichie) — produite par `write-<couche>` à l'étape 6.
+2. **Les ébauches** créées pour résoudre les wikilinks orphelins — étape 7.
+3. **Les frontmatters des fiches Vidéos référencées dans la fiche cible** — étape 8 (back-références `<target_couche>s: [target_name]`).
+
+⚠️ **Si le commit final ne touche que (1), c'est un échec partiel** : l'étape 8 a été oubliée. C'est l'erreur la plus fréquente et la plus invisible (rien ne casse, mais `gather-context` et les futures synthèses ne pourront plus retrouver les vidéos par grep frontmatter). Voir l'étape 8 pour la vérification obligatoire.
 
 **Conventions partagées** (nommage, wikilinks, frontmatter, git) : voir `BUILD.md` de WikiPol.
 **Contexte éditorial de la source** (ton, principes, attribution) : voir `CLAUDE.md` de la source.
@@ -119,7 +127,19 @@ Si le subagent échoue ou produit une fiche manifestement incomplète, analyser 
 
 Parcourir la fiche produite/enrichie. Pour chaque `[[wikilink]]`, vérifier que le fichier cible existe. Créer des ébauches pour les liens restants (en suivant les conventions de nommage de la source).
 
-### Étape 8 — Pose des back-références frontmatter
+### Étape 8 — Pose des back-références frontmatter (OBLIGATOIRE)
+
+⚠️ **Étape la plus oubliée. Ne pas la sauter.** Sans elle, les futures synthèses ne pourront pas retrouver ces vidéos par grep frontmatter — le graphe inversé est cassé silencieusement.
+
+**Le plus simple — invoquer le script utilitaire** :
+
+```bash
+python Scripts/tag_back_references.py --fiche Sources/<NomSource>/<DossierCouche>/<target_name>.md
+```
+
+Le script lit la section « Vidéos » de la fiche cible, identifie les `[[wikilinks]]` qui pointent vers `Videos/`, et propage le tag de manière idempotente. Output sous la forme `+ ajouté` / `= déjà OK` / `! erreur`. **Toujours préférer le script à une réécriture manuelle** — il gère correctement les cas inline `[a, b]`, multiline `- a`, et l'insertion de champ absent.
+
+**Si on procède manuellement** (cas exceptionnel — script indisponible, source avec format frontmatter atypique) :
 
 La fiche couche fraîchement produite (étape 6) contient une section listant les vidéos qui mobilisent réellement la couche (« Vidéos où elle est mobilisée », « Vidéos clés », « Vidéos où le concept est développé », etc. — selon le format défini dans le `BUILD.md` source pour cette couche). Pour chaque wikilink `[[Titre]]` de cette section qui pointe vers une fiche `Sources/<NomSource>/Videos/`, mettre à jour son frontmatter :
 
@@ -132,7 +152,13 @@ La fiche couche fraîchement produite (étape 6) contient une section listant le
 
 **Ne tagger que les vidéos *réellement listées dans la fiche couche produite*** — pas l'ensemble des vidéos du batch source. Le batch est large pour donner de la matière à `write-<couche>` ; la fiche finale a fait le tri éditorial. Les `BUILD.md` sources rappellent généralement de ne pas remplir ces champs gratuitement.
 
-Garder la liste exacte des fiches Vidéos modifiées pour le commit (étape 11) et pour le résumé (étape 12).
+**Vérification finale obligatoire avant l'étape 11 (commit)** :
+
+```bash
+git status
+```
+
+La sortie doit montrer **plusieurs fichiers `Videos/*.md` modifiés** en plus de la fiche cible. Si seule la fiche cible apparaît, l'étape 8 a échoué — relancer `tag_back_references.py` avant de committer. Garder la liste exacte des fiches Vidéos modifiées pour le commit (étape 11) et pour le résumé (étape 12).
 
 ### Étape 9 — Vérification orthographique
 
@@ -184,6 +210,7 @@ Présenter :
 - **Une seule fiche cible par synthèse.** Si l'utilisateur veut produire plusieurs fiches, il doit créer plusieurs batch files et les lancer séparément.
 - **Pas de lecture de transcripts.** Comme pour `ingest-batch` en consolidation finale, on travaille à la granularité « fiche vidéo » — sinon on sature le contexte.
 - **Pas de modification de fiches basic, sauf back-références frontmatter.** La skill ne touche que (a) la fiche cible de la couche, (b) les ébauches qu'elle crée pour résoudre des wikilinks orphelins, et (c) le **frontmatter** des fiches Vidéos listées dans la section « Vidéos » de la fiche cible — uniquement pour ajouter `target_name` au champ `<target_couche>s` (étape 8). Le **corps** des fiches Vidéos reste lu, pas modifié. Les fiches Concepts/Individus/Organisations restent intégralement lues, pas modifiées.
+- **L'étape 8 est obligatoire — pas optionnelle.** Une synthèse sans back-références est un échec partiel : la fiche couche existe mais le graphe inversé est cassé. L'erreur ne se voit pas tout de suite (rien ne plante), mais les futures synthèses ne retrouveront pas ces vidéos par grep frontmatter. Avant l'étape 11 (commit), `git status` doit montrer plusieurs fiches `Videos/*.md` modifiées. Si tel n'est pas le cas, relancer `Scripts/tag_back_references.py --fiche <chemin-fiche-cible>` qui implémente l'étape 8 de manière idempotente.
 - **Un seul commit sur develop.** Même si la fiche cible est enrichie + plusieurs ébauches sont créées, c'est 1 commit direct sur `develop` (pas de branche, pas de merge).
 - **Ne jamais référencer le « batch » ou la skill dans la fiche produite.** La fiche cible est lue par d'autres usagers du vault qui n'ont pas accès au batch file. Pas de phrase comme « consolidé à partir du batch X » — l'origine de la synthèse est dans l'historique git, pas dans la fiche.
 - **Statut obligatoirement à jour.** Si le batch file n'est pas marqué `✅ fait` à la fin, c'est un bug — la skill doit garantir l'idempotence (pas de relance accidentelle d'une synthèse déjà faite).
