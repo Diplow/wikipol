@@ -804,11 +804,32 @@ def get_transcript_title_from_fiche(fiche_path):
     return link.split('/')[-1]
 
 
+# Valeurs YAML traitées comme "champ vide" (utile pour youtube_id: null)
+_EMPTY_YAML_VALUES = {'null', '~', '""', "''", ''}
+
+
+def _read_text_strip_bom(path):
+    """Lit un fichier UTF-8 en retirant un éventuel BOM et en normalisant les
+    line endings en LF. Renvoie (content, had_bom).
+
+    La normalisation est nécessaire pour que les regex `[ \\t]*$` matchent les
+    fichiers Windows (CRLF) — sinon le `\\r` traîne avant le `\\n` et casse
+    les ancres de fin de ligne en mode MULTILINE.
+    """
+    raw = open(path, 'rb').read()
+    had_bom = raw.startswith(b'\xef\xbb\xbf')
+    if had_bom:
+        raw = raw[3:]
+    # `\r+\n?` capture aussi `\r\r\n` (corruption Windows mode-texte rejouée)
+    # et `\r` seul (vieux Mac), sans introduire de lignes vides.
+    text = re.sub(r'\r+\n?', '\n', raw.decode('utf-8'))
+    return text, had_bom
+
+
 def read_fiche_frontmatter_fields(fiche_path):
     result = {'youtube_id': None, 'date': None}
     try:
-        with open(fiche_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content, _ = _read_text_strip_bom(fiche_path)
     except Exception:
         return result
     if not content.startswith('---'):
@@ -818,9 +839,11 @@ def read_fiche_frontmatter_fields(fiche_path):
         return result
     fm = content[3:end]
     for line in fm.splitlines():
-        m = re.match(r'^youtube_id\s*:\s*["\']?([a-zA-Z0-9_-]+)["\']?\s*$', line)
+        m = re.match(r'^youtube_id\s*:\s*["\']?([a-zA-Z0-9_~-]+)["\']?\s*$', line)
         if m:
-            result['youtube_id'] = m.group(1)
+            v = m.group(1).strip()
+            if v not in _EMPTY_YAML_VALUES:
+                result['youtube_id'] = v
         m = re.match(r'^date\s*:\s*(\S+)\s*$', line)
         if m:
             result['date'] = m.group(1)
@@ -828,16 +851,20 @@ def read_fiche_frontmatter_fields(fiche_path):
 
 
 def update_fiche_frontmatter(fiche_path, youtube_id=None, date=None, dry_run=False):
+    """Renvoie 'updated' / 'no-change' / 'error:<raison>'.
+
+    Note : le BOM UTF-8 est retiré à la ré-écriture (les anciens fichiers
+    Obsidian peuvent en avoir un en tête, ce qui casse le parsing).
+    """
     try:
-        with open(fiche_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content, _ = _read_text_strip_bom(fiche_path)
     except Exception:
-        return False
+        return 'error:read'
     if not content.startswith('---'):
-        return False
+        return 'error:no-frontmatter'
     end = content.find('\n---', 3)
     if end == -1:
-        return False
+        return 'error:malformed-frontmatter'
 
     fm = content[3:end]
     body = content[end:]
@@ -845,12 +872,21 @@ def update_fiche_frontmatter(fiche_path, youtube_id=None, date=None, dry_run=Fal
     changes = []
 
     if date:
-        date_m = re.search(r'^(date\s*:)\s*(\S+)\s*$', fm, re.MULTILINE)
+        # NB : on utilise [ \t] (pas \s) pour ne pas faire fuiter la regex
+        # sur la ligne suivante quand `date:` est vide (\s inclut \n par défaut).
+        date_m = re.search(r'^(date[ \t]*:)[ \t]*(\S+)[ \t]*$', fm, re.MULTILINE)
+        empty_date_m = re.search(r'^(date[ \t]*:)[ \t]*$', fm, re.MULTILINE)
         if date_m:
             existing = date_m.group(2)
             if not re.match(r'\d{4}-\d{2}-\d{2}', existing):
+                # Substitution littérale (évite l'interprétation \1, \2 dans une regex sub)
                 fm = fm[:date_m.start(2)] + date + fm[date_m.end(2):]
                 changes.append(f"date: {existing} → {date}")
+        elif empty_date_m:
+            # `date:` présent mais sans valeur → écrire la valeur sur la même ligne
+            # (sinon on créerait une 2e clé `date:` en doublon)
+            fm = fm[:empty_date_m.end(1)] + f' {date}' + fm[empty_date_m.end(1):]
+            changes.append(f"date: (vide) → {date}")
         else:
             type_m = re.search(r'^(type\s*:.*)$', fm, re.MULTILINE)
             if type_m:
@@ -860,29 +896,44 @@ def update_fiche_frontmatter(fiche_path, youtube_id=None, date=None, dry_run=Fal
                 fm = fm.rstrip() + f"\ndate: {date}"
             changes.append(f"date: (absent) → {date}")
 
-    if youtube_id and not re.search(r'^youtube_id\s*:', fm, re.MULTILINE):
-        date_line = re.search(r'^(date\s*:.*)$', fm, re.MULTILINE)
-        if date_line:
-            insert_pos = date_line.end()
-            fm = fm[:insert_pos] + f"\nyoutube_id: {youtube_id}" + fm[insert_pos:]
-        else:
-            type_m = re.search(r'^(type\s*:.*)$', fm, re.MULTILINE)
-            if type_m:
-                insert_pos = type_m.end()
+    if youtube_id:
+        # Cas A : champ déjà présent avec une valeur "vide" (null/~/"") → remplacer
+        null_m = re.search(
+            r'^(youtube_id\s*:\s*)(null|~|""|\'\')\s*$',
+            fm, re.MULTILINE,
+        )
+        # Cas B : champ déjà présent avec une vraie valeur → ne rien faire
+        existing_m = re.search(
+            r'^youtube_id\s*:\s*["\']?([a-zA-Z0-9_-]{6,})["\']?\s*$',
+            fm, re.MULTILINE,
+        )
+        if null_m:
+            fm = fm[:null_m.start(2)] + youtube_id + fm[null_m.end(2):]
+            changes.append(f"youtube_id: null → {youtube_id}")
+        elif not existing_m:
+            # Cas C : champ absent → insérer après date: (sinon après type:)
+            date_line = re.search(r'^(date\s*:.*)$', fm, re.MULTILINE)
+            if date_line:
+                insert_pos = date_line.end()
                 fm = fm[:insert_pos] + f"\nyoutube_id: {youtube_id}" + fm[insert_pos:]
             else:
-                fm = fm.rstrip() + f"\nyoutube_id: {youtube_id}"
-        changes.append(f"youtube_id: {youtube_id}")
+                type_m = re.search(r'^(type\s*:.*)$', fm, re.MULTILINE)
+                if type_m:
+                    insert_pos = type_m.end()
+                    fm = fm[:insert_pos] + f"\nyoutube_id: {youtube_id}" + fm[insert_pos:]
+                else:
+                    fm = fm.rstrip() + f"\nyoutube_id: {youtube_id}"
+            changes.append(f"youtube_id: {youtube_id}")
 
     if not changes or fm == original_fm:
-        return False
+        return 'no-change'
     if dry_run:
         print(f"    [dry-run] {os.path.basename(fiche_path)} : {', '.join(changes)}")
-        return True
+        return 'updated'
     new_content = '---' + fm + body
     with open(fiche_path, 'w', encoding='utf-8') as f:
         f.write(new_content)
-    return True
+    return 'updated'
 
 
 def cmd_enrich_fiches(cfg: SourceConfig, dry_run=False):
@@ -910,7 +961,9 @@ def cmd_enrich_fiches(cfg: SourceConfig, dry_run=False):
     updated = 0
     skipped = 0
     no_match = 0
+    errors = 0
     no_match_list = []
+    error_list = []
 
     for fiche_path in sorted(fiche_files):
         fields = read_fiche_frontmatter_fields(fiche_path)
@@ -951,14 +1004,30 @@ def cmd_enrich_fiches(cfg: SourceConfig, dry_run=False):
         if not new_id and not new_date:
             skipped += 1
             continue
-        if update_fiche_frontmatter(fiche_path, youtube_id=new_id, date=new_date, dry_run=dry_run):
+        result = update_fiche_frontmatter(fiche_path, youtube_id=new_id, date=new_date, dry_run=dry_run)
+        if result == 'updated':
             updated += 1
             if not dry_run:
                 print(f"  ✓ {fiche_name[:70]}")
+        elif result == 'no-change':
+            skipped += 1
+        else:  # 'error:*'
+            errors += 1
+            error_list.append((result, fiche_name))
+            print(f"  ! {fiche_name[:70]} ({result})")
 
     print(f"\n  Mises à jour : {updated}")
     print(f"  Déjà OK      : {skipped}")
     print(f"  Non matchées : {no_match}")
+    print(f"  Erreurs      : {errors}")
+    if error_list:
+        print("\n  Fiches en erreur (frontmatter manquant ou malformé) :")
+        for err, name in error_list:
+            print(f"    [{err}] {name}")
+    if no_match_list and dry_run:
+        print(f"\n  Fiches non matchées contre la chaîne :")
+        for name in no_match_list:
+            print(f"    {name}")
 
 
 def cmd_fix_fiche_dates(cfg: SourceConfig, dry_run=False):
